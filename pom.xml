@@ -9,6 +9,18 @@
     <version>1.0.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
+    <name>operational-metrics</name>
+    <description>Quarkus microservice that aggregates operational health metrics for open-source packages from OpenSSF Scorecard, deps.dev, ecosyste.ms, and GitHub.</description>
+    <url>https://github.com/arikregev/operational-metrics</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

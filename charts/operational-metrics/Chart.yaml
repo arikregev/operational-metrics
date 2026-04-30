@@ -4,6 +4,9 @@ description: Quarkus microservice that aggregates operational health metrics for
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
+home: https://github.com/arikregev/operational-metrics
+annotations:
+  artifacthub.io/license: MIT
 keywords:
   - quarkus
   - operational-metrics
