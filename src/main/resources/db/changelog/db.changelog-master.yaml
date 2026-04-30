@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/001-create-package.sql
+  - include:
+      file: db/changelog/002-create-operational-metrics.sql
+  - include:
+      file: db/changelog/003-create-metrics-history.sql
+  - include:
+      file: db/changelog/004-create-metrics-fetch-log.sql
+  - include:
+      file: db/changelog/005-create-repo-url-cache.sql
