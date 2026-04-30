@@ -1,0 +1,19 @@
+apiVersion: v2
+name: operational-metrics
+description: Quarkus microservice that aggregates operational health metrics for open-source packages from OpenSSF Scorecard, deps.dev, ecosyste.ms, and GitHub.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - quarkus
+  - operational-metrics
+  - openssf
+  - scorecard
+  - depsdev
+  - ecosystems
+  - dependency-track
+  - sbom
+sources:
+  - https://github.com/arikregev/operational-metrics
+maintainers:
+  - name: arikregev

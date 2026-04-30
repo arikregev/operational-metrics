@@ -1,0 +1,32 @@
+Operational Metrics has been deployed.
+
+1. Verify the pod is running:
+   kubectl --namespace {{ .Release.Namespace }} get pods -l "app.kubernetes.io/instance={{ .Release.Name }}"
+
+2. Reach the service:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+   {{- range .paths }}
+   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}{{ .path }}
+   {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+   export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "operational-metrics.fullname" . }})
+   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+   echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+   export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "operational-metrics.fullname" . }} --template "{{ "{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}" }}")
+   echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "operational-metrics.fullname" . }} 8080:{{ .Values.service.port }}
+   Open http://localhost:8080
+{{- end }}
+
+3. Try the API:
+   curl 'http://localhost:8080/api/v1/metrics?purl=pkg:maven/org.apache.logging.log4j/log4j-core'
+   curl -X POST 'http://localhost:8080/api/v1/sync/trigger'
+
+4. Health checks:
+   /q/health/live, /q/health/ready, /q/health/started
+
+For full configuration options, see values.yaml.

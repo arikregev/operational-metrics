@@ -1,0 +1,196 @@
+# =============================================================================
+# Operational Metrics — Helm Values
+# =============================================================================
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/arikregev/operational-metrics
+  pullPolicy: IfNotPresent
+  tag: ""  # defaults to .Chart.AppVersion
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
+# Service account
+# -----------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# -----------------------------------------------------------------------------
+# Pod-level configuration
+# -----------------------------------------------------------------------------
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 185
+  fsGroup: 185
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false  # /deployments needs write for tmp
+  runAsNonRoot: true
+  runAsUser: 185
+
+# -----------------------------------------------------------------------------
+# Service
+# -----------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 8080
+
+# -----------------------------------------------------------------------------
+# Ingress
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: operational-metrics.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# -----------------------------------------------------------------------------
+# Resources
+# -----------------------------------------------------------------------------
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Health probes (Quarkus SmallRye Health)
+# -----------------------------------------------------------------------------
+livenessProbe:
+  httpGet:
+    path: /q/health/live
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /q/health/ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+startupProbe:
+  httpGet:
+    path: /q/health/started
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 30
+
+# -----------------------------------------------------------------------------
+# Horizontal Pod Autoscaler
+# -----------------------------------------------------------------------------
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+# -----------------------------------------------------------------------------
+# Pod scheduling
+# -----------------------------------------------------------------------------
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# =============================================================================
+# Application configuration
+# =============================================================================
+
+# --- Database (external PostgreSQL) ---
+database:
+  url: "jdbc:postgresql://postgres:5432/operational_metrics"
+  username: "postgres"
+  # Password sourced from Secret. Either provide value here (will be base64-encoded
+  # into the chart-managed Secret) or set existingSecret to reference your own.
+  password: "postgres"
+  existingSecret: ""        # if set, must contain key 'db-password'
+  existingSecretKey: "db-password"
+
+# --- Dependency Track ---
+dependencyTrack:
+  url: "http://dependency-track:8081"
+  apiKey: ""                 # provide via existingSecret in production
+  existingSecret: ""         # if set, must contain key 'dt-api-key'
+  existingSecretKey: "dt-api-key"
+  pageSize: 100
+
+# --- GitHub ---
+github:
+  token: ""                  # provide via existingSecret in production
+  existingSecret: ""         # if set, must contain key 'github-token'
+  existingSecretKey: "github-token"
+  apiUrl: "https://api.github.com"
+
+# --- ecosyste.ms (used for polite-pool 15K/hr rate limit) ---
+ecosystems:
+  contactEmail: "ops@example.com"
+
+# --- Source priorities (1 = highest) ---
+sources:
+  scorecard:
+    enabled: true
+    priority: 1
+  depsdev:
+    enabled: true
+    priority: 2
+  ecosystems:
+    enabled: true
+    priority: 3
+  github:
+    enabled: true
+    priority: 4
+
+# --- Sync schedule and behavior ---
+sync:
+  cron: "0 0 2 * * ?"           # 2 AM daily
+  concurrency: 4
+  batchSize: 500
+  rateLimitDelayMs: 1000
+  maxRetries: 3
+
+# --- History retention ---
+history:
+  retentionDays: 90
+  purgeCron: "0 0 3 * * ?"      # 3 AM daily
+
+# --- API ---
+api:
+  onDemandConcurrency: 4
+
+# --- Extra environment variables ---
+extraEnv: []
+# - name: SOME_VAR
+#   value: "value"
+
+# --- Extra environment variables from secrets/configmaps ---
+extraEnvFrom: []
+# - secretRef:
+#     name: my-secret

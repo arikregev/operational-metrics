@@ -1,0 +1,34 @@
+# Build artifacts
+target/
+.quarkus/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store
+
+# Docs and CI metadata not needed in image
+README.md
+LICENSE
+docs/
+charts/
+docker-compose.yml
+Dockerfile
+.dockerignore
+.github/
+.claude/
+
+# Logs and env
+*.log
+.env
+.env.local

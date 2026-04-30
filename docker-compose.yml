@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: operational-metrics-postgres
+    environment:
+      POSTGRES_DB: operational_metrics
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d operational_metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: operational-metrics-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/operational_metrics
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DT_URL: ${DT_URL:-http://host.docker.internal:8081}
+      DT_API_KEY: ${DT_API_KEY:-changeme}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      ECOSYSTEMS_CONTACT_EMAIL: ${ECOSYSTEMS_CONTACT_EMAIL:-ops@example.com}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  pgdata:

@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "operational-metrics.fullname" . }}-config
+  labels:
+    {{- include "operational-metrics.labels" . | nindent 4 }}
+data:
+  # --- Datasource ---
+  DB_URL: {{ .Values.database.url | quote }}
+  DB_USERNAME: {{ .Values.database.username | quote }}
+
+  # --- Dependency Track ---
+  DT_URL: {{ .Values.dependencyTrack.url | quote }}
+  DEPENDENCY_TRACK_PAGE_SIZE: {{ .Values.dependencyTrack.pageSize | quote }}
+
+  # --- GitHub ---
+  GITHUB_API_URL: {{ .Values.github.apiUrl | quote }}
+
+  # --- ecosyste.ms ---
+  ECOSYSTEMS_CONTACT_EMAIL: {{ .Values.ecosystems.contactEmail | quote }}
+
+  # --- Source priorities ---
+  METRICS_SOURCES_SOURCE_SCORECARD_ENABLED: {{ .Values.sources.scorecard.enabled | quote }}
+  METRICS_SOURCES_SOURCE_SCORECARD_PRIORITY: {{ .Values.sources.scorecard.priority | quote }}
+  METRICS_SOURCES_SOURCE_DEPSDEV_ENABLED: {{ .Values.sources.depsdev.enabled | quote }}
+  METRICS_SOURCES_SOURCE_DEPSDEV_PRIORITY: {{ .Values.sources.depsdev.priority | quote }}
+  METRICS_SOURCES_SOURCE_ECOSYSTEMS_ENABLED: {{ .Values.sources.ecosystems.enabled | quote }}
+  METRICS_SOURCES_SOURCE_ECOSYSTEMS_PRIORITY: {{ .Values.sources.ecosystems.priority | quote }}
+  METRICS_SOURCES_SOURCE_GITHUB_ENABLED: {{ .Values.sources.github.enabled | quote }}
+  METRICS_SOURCES_SOURCE_GITHUB_PRIORITY: {{ .Values.sources.github.priority | quote }}
+
+  # --- Sync ---
+  METRICS_SYNC_CRON: {{ .Values.sync.cron | quote }}
+  METRICS_SYNC_CONCURRENCY: {{ .Values.sync.concurrency | quote }}
+  METRICS_SYNC_BATCH_SIZE: {{ .Values.sync.batchSize | quote }}
+  METRICS_SYNC_RATE_LIMIT_DELAY_MS: {{ .Values.sync.rateLimitDelayMs | quote }}
+  METRICS_SYNC_MAX_RETRIES: {{ .Values.sync.maxRetries | quote }}
+
+  # --- History ---
+  METRICS_HISTORY_RETENTION_DAYS: {{ .Values.history.retentionDays | quote }}
+  METRICS_HISTORY_PURGE_CRON: {{ .Values.history.purgeCron | quote }}
+
+  # --- API ---
+  METRICS_API_ON_DEMAND_CONCURRENCY: {{ .Values.api.onDemandConcurrency | quote }}
