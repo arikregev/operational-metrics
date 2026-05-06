@@ -16,8 +16,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
@@ -81,13 +79,9 @@ class DepsDevCollectorTest {
         );
         DepsDevDependents dependents = new DepsDevDependents(1234L, 200L, 1034L);
 
-        String encodedPurl = URLEncoder.encode(mavenPackage.canonical(), StandardCharsets.UTF_8);
-        String encodedProjectId = URLEncoder.encode("github.com/apache/commons-lang", StandardCharsets.UTF_8);
-        String encodedName = URLEncoder.encode("org.apache.commons:commons-lang3", StandardCharsets.UTF_8);
-
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
-        when(depsDevClient.getProject(encodedProjectId)).thenReturn(project);
-        when(depsDevClient.getDependents("MAVEN", encodedName, "3.14.0")).thenReturn(dependents);
+        when(depsDevClient.lookupPurl(mavenPackage.canonical())).thenReturn(purlResponse);
+        when(depsDevClient.getProject("github.com/apache/commons-lang")).thenReturn(project);
+        when(depsDevClient.getDependents("MAVEN", "org.apache.commons:commons-lang3", "3.14.0")).thenReturn(dependents);
 
         PartialMetrics partial = collector.collect(mavenPackage, Optional.empty());
 
@@ -131,10 +125,8 @@ class DepsDevCollectorTest {
                 List.of(),
                 List.of()
         );
-        String encodedPurl = URLEncoder.encode(npmPackage.canonical(), StandardCharsets.UTF_8);
-        String encodedName = URLEncoder.encode("express", StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
-        when(depsDevClient.getDependents("NPM", encodedName, "4.18.0"))
+        when(depsDevClient.lookupPurl(npmPackage.canonical())).thenReturn(purlResponse);
+        when(depsDevClient.getDependents("NPM", "express", "4.18.0"))
                 .thenReturn(new DepsDevDependents(0L, 0L, 0L));
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
@@ -156,8 +148,7 @@ class DepsDevCollectorTest {
                         new DepsDevPurlResponse.DepsDevAdvisoryKey("c")
                 )
         );
-        String encodedPurl = URLEncoder.encode(npmPackage.canonical(), StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
+        when(depsDevClient.lookupPurl(npmPackage.canonical())).thenReturn(purlResponse);
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
@@ -187,10 +178,8 @@ class DepsDevCollectorTest {
                 null,
                 new DepsDevProject.DepsDevOssFuzz(100, 80)
         );
-        String encodedPurl = URLEncoder.encode(npmPackage.canonical(), StandardCharsets.UTF_8);
-        String encodedProjectId = URLEncoder.encode("github.com/expressjs/express", StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
-        when(depsDevClient.getProject(encodedProjectId)).thenReturn(project);
+        when(depsDevClient.lookupPurl(npmPackage.canonical())).thenReturn(purlResponse);
+        when(depsDevClient.getProject("github.com/expressjs/express")).thenReturn(project);
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
@@ -220,10 +209,8 @@ class DepsDevCollectorTest {
                 null,
                 null
         );
-        String encodedPurl = URLEncoder.encode(npmPackage.canonical(), StandardCharsets.UTF_8);
-        String encodedProjectId = URLEncoder.encode("github.com/expressjs/express", StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
-        when(depsDevClient.getProject(encodedProjectId)).thenReturn(project);
+        when(depsDevClient.lookupPurl(npmPackage.canonical())).thenReturn(purlResponse);
+        when(depsDevClient.getProject("github.com/expressjs/express")).thenReturn(project);
         when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
                 .thenThrow(new RuntimeException("dependents failed"));
 
@@ -263,8 +250,7 @@ class DepsDevCollectorTest {
                 )),
                 List.of()
         );
-        String encodedPurl = URLEncoder.encode(npmPackage.canonical(), StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
+        when(depsDevClient.lookupPurl(npmPackage.canonical())).thenReturn(purlResponse);
         when(depsDevClient.getProject(anyString())).thenThrow(new RuntimeException("project lookup failed"));
         when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
                 .thenReturn(new DepsDevDependents(7L, 3L, 4L));
@@ -294,10 +280,8 @@ class DepsDevCollectorTest {
                 new DepsDevPurlResponse.DepsDevProjectKey("github.com/onlyone"),
                 null, 1, 0, "BSD-3-Clause", null, null, null, null
         );
-        String encodedPurl = URLEncoder.encode(npmPackage.canonical(), StandardCharsets.UTF_8);
-        String encodedProjectId = URLEncoder.encode("github.com/onlyone", StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
-        when(depsDevClient.getProject(encodedProjectId)).thenReturn(project);
+        when(depsDevClient.lookupPurl(npmPackage.canonical())).thenReturn(purlResponse);
+        when(depsDevClient.getProject("github.com/onlyone")).thenReturn(project);
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
@@ -316,14 +300,14 @@ class DepsDevCollectorTest {
                 null,
                 null
         );
-        String encodedPurl = URLEncoder.encode(pypi.canonical(), StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
+        when(depsDevClient.lookupPurl(pypi.canonical())).thenReturn(purlResponse);
         when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
                 .thenReturn(new DepsDevDependents(0L, 0L, 0L));
 
         collector.collect(pypi, Optional.empty());
 
-        verify(depsDevClient).getDependents("PYPI", URLEncoder.encode("requests", StandardCharsets.UTF_8), "2.31.0");
+        // Raw value passed to the client; JAX-RS @PathParam handles encoding.
+        verify(depsDevClient).getDependents("PYPI", "requests", "2.31.0");
     }
 
     @Test
@@ -335,8 +319,7 @@ class DepsDevCollectorTest {
                 null,
                 null
         );
-        String encodedPurl = URLEncoder.encode(golang.canonical(), StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
+        when(depsDevClient.lookupPurl(golang.canonical())).thenReturn(purlResponse);
         when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
                 .thenReturn(new DepsDevDependents(0L, 0L, 0L));
 
@@ -354,8 +337,7 @@ class DepsDevCollectorTest {
                 null,
                 null
         );
-        String encodedPurl = URLEncoder.encode(composer.canonical(), StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
+        when(depsDevClient.lookupPurl(composer.canonical())).thenReturn(purlResponse);
         when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
                 .thenReturn(new DepsDevDependents(0L, 0L, 0L));
 
@@ -365,15 +347,14 @@ class DepsDevCollectorTest {
     }
 
     @Test
-    void collect_mavenPurl_encodesGroupAndArtifact() {
+    void collect_mavenPurl_combinesGroupAndArtifactWithColon() {
         DepsDevPurlResponse purlResponse = new DepsDevPurlResponse(
                 new DepsDevPurlResponse.DepsDevVersionKey("MAVEN", "org.apache.commons:commons-lang3", "3.14.0"),
                 "pkg:maven/org.apache.commons/commons-lang3@3.14.0",
                 null,
                 null
         );
-        String encodedPurl = URLEncoder.encode(mavenPackage.canonical(), StandardCharsets.UTF_8);
-        when(depsDevClient.lookupPurl(encodedPurl)).thenReturn(purlResponse);
+        when(depsDevClient.lookupPurl(mavenPackage.canonical())).thenReturn(purlResponse);
         when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
                 .thenReturn(new DepsDevDependents(0L, 0L, 0L));
 
@@ -385,10 +366,10 @@ class DepsDevCollectorTest {
         verify(depsDevClient).getDependents(systemCap.capture(), nameCap.capture(), versionCap.capture());
 
         assertThat(systemCap.getValue()).isEqualTo("MAVEN");
-        // Maven name is "namespace:name" url-encoded; ":" encodes to %3A
-        String expectedName = URLEncoder.encode("org.apache.commons:commons-lang3", StandardCharsets.UTF_8);
-        assertThat(nameCap.getValue()).isEqualTo(expectedName);
-        assertThat(nameCap.getValue()).contains("%3A");
+        // Maven name on deps.dev is "groupId:artifactId" — passed RAW to the
+        // client. URL encoding is JAX-RS's job; double-encoding here would
+        // produce a 400 from deps.dev (see fix/rest-client-encoding-and-header).
+        assertThat(nameCap.getValue()).isEqualTo("org.apache.commons:commons-lang3");
         assertThat(versionCap.getValue()).isEqualTo("3.14.0");
     }
 }

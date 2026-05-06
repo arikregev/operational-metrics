@@ -14,8 +14,6 @@ import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jdbi.v3.core.Jdbi;
 import org.jboss.logging.Logger;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
@@ -75,8 +73,10 @@ public class RepoUrlResolver {
 
     private Optional<RepoUrl> resolveViaDepsdev(PackageId packageId) {
         try {
-            String encoded = URLEncoder.encode(packageId.canonical(), StandardCharsets.UTF_8);
-            DepsDevPurlResponse response = depsDevClient.lookupPurl(encoded);
+            // Pass the raw canonical PURL — JAX-RS @PathParam encodes it once.
+            // Pre-encoding here would produce double-encoding (pkg%253A...) which
+            // deps.dev rejects with HTTP 400.
+            DepsDevPurlResponse response = depsDevClient.lookupPurl(packageId.canonical());
             if (response.relatedProjects() != null) {
                 return response.relatedProjects().stream()
                         .filter(rp -> rp.projectKey() != null && rp.projectKey().id() != null)
