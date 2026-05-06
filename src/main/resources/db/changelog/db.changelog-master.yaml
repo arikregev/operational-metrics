@@ -9,3 +9,5 @@ databaseChangeLog:
       file: db/changelog/004-create-metrics-fetch-log.sql
   - include:
       file: db/changelog/005-create-repo-url-cache.sql
+  - include:
+      file: db/changelog/006-unique-purl-canonical.sql
