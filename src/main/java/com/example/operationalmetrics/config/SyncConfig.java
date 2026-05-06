@@ -9,15 +9,12 @@ public interface SyncConfig {
     @WithDefault("0 0 2 * * ?")
     String cron();
 
+    /**
+     * Maximum number of orchestrator tasks in flight at once during a sync.
+     * Used as the permit count for the streaming sync's Semaphore — when
+     * saturated, DT pagination naturally throttles to match downstream
+     * throughput.
+     */
     @WithDefault("4")
     int concurrency();
-
-    @WithDefault("500")
-    int batchSize();
-
-    @WithDefault("1000")
-    long rateLimitDelayMs();
-
-    @WithDefault("3")
-    int maxRetries();
 }

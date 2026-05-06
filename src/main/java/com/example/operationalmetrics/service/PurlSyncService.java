@@ -6,18 +6,24 @@ import com.example.operationalmetrics.client.dependencytrack.dto.DtProject;
 import com.example.operationalmetrics.config.DependencyTrackConfig;
 import com.example.operationalmetrics.config.SyncConfig;
 import com.example.operationalmetrics.model.PackageId;
-import com.example.operationalmetrics.repository.PackageDao;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
-import org.jdbi.v3.core.Jdbi;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 @ApplicationScoped
 public class PurlSyncService {
@@ -28,102 +34,124 @@ public class PurlSyncService {
     private final DependencyTrackConfig dtConfig;
     private final SyncConfig syncConfig;
     private final MetricsOrchestrator orchestrator;
-    private final Jdbi jdbi;
     private final AtomicReference<SyncStatus> currentStatus = new AtomicReference<>(SyncStatus.idle());
 
     @Inject
     public PurlSyncService(@RestClient DependencyTrackClient dtClient,
                            DependencyTrackConfig dtConfig,
                            SyncConfig syncConfig,
-                           MetricsOrchestrator orchestrator,
-                           Jdbi jdbi) {
+                           MetricsOrchestrator orchestrator) {
         this.dtClient = dtClient;
         this.dtConfig = dtConfig;
         this.syncConfig = syncConfig;
         this.orchestrator = orchestrator;
-        this.jdbi = jdbi;
     }
 
     public void triggerAsync() {
-        if (!currentStatus.compareAndSet(currentStatus.get(),
-                currentStatus.get().isRunning() ? currentStatus.get() : SyncStatus.running())) {
-            if (currentStatus.get().isRunning()) {
-                LOG.info("Sync already in progress, skipping");
-                return;
-            }
+        SyncStatus snapshot = currentStatus.get();
+        if (snapshot.isRunning()) {
+            LOG.info("Sync already in progress, skipping");
+            return;
+        }
+        if (!currentStatus.compareAndSet(snapshot, SyncStatus.running())) {
+            LOG.info("Sync already in progress, skipping");
+            return;
         }
         Thread.startVirtualThread(this::runFullSync);
     }
 
+    /**
+     * Streaming sync: walks Dependency Track pages and submits per-PURL work
+     * as soon as it's seen, rather than buffering the whole catalogue first.
+     *
+     * <p>A {@link Semaphore} sized to {@code syncConfig.concurrency()} caps the
+     * number of in-flight orchestrator tasks. When all permits are held, the
+     * DT-walking thread blocks at {@code acquire()} — DT pagination naturally
+     * throttles to match downstream throughput. No bounded queue needed.
+     *
+     * <p>Cross-project deduplication is done via a thin {@code Set<PackageId>}
+     * (only the identity tuple, ~3MB at 19.6K PURLs).
+     */
     public void runFullSync() {
         UUID syncRunId = UUID.randomUUID();
         Instant startTime = Instant.now();
         currentStatus.set(SyncStatus.running());
-        LOG.infov("Starting full sync, run ID: {0}", syncRunId);
+        LOG.infov("Starting streaming full sync, run ID: {0}", syncRunId);
 
-        try {
-            Set<PackageId> allPackages = collectAllPurls();
-            LOG.infov("Collected {0} unique packages from Dependency Track", allPackages.size());
+        Set<PackageId> seen = ConcurrentHashMap.newKeySet();
+        AtomicInteger discovered = new AtomicInteger();
+        AtomicInteger processed = new AtomicInteger();
+        AtomicInteger failed = new AtomicInteger();
+        AtomicInteger duplicatesSkipped = new AtomicInteger();
+        Semaphore concurrencyLimit = new Semaphore(syncConfig.concurrency());
+        List<Future<?>> outstanding = new ArrayList<>();
 
-            jdbi.useExtension(PackageDao.class, dao -> {
-                for (PackageId pkg : allPackages) {
-                    dao.upsert(pkg.toEntity());
-                }
-            });
-
-            AtomicInteger processed = new AtomicInteger(0);
-            AtomicInteger failed = new AtomicInteger(0);
-            List<List<PackageId>> batches = partition(new ArrayList<>(allPackages), syncConfig.batchSize());
-            ExecutorService executor = Executors.newFixedThreadPool(syncConfig.concurrency());
-
+        Exception walkError = null;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             try {
-                for (List<PackageId> batch : batches) {
-                    List<Future<?>> futures = new ArrayList<>();
-                    for (PackageId pkg : batch) {
-                        futures.add(executor.submit(() -> {
-                            try {
-                                orchestrator.collectAndStore(pkg, syncRunId);
-                                processed.incrementAndGet();
-                            } catch (Exception e) {
-                                failed.incrementAndGet();
-                                LOG.warnv("Sync failed for {0}: {1}", pkg.canonical(), e.getMessage());
-                            }
-                        }));
+                walkDependencyTrack(purl -> {
+                    PackageId pkg;
+                    try {
+                        pkg = PackageId.fromPurl(purl);
+                    } catch (Exception e) {
+                        LOG.debugv("Invalid PURL from DT: {0}", purl);
+                        return;
+                    }
+                    if (!seen.add(pkg)) {
+                        duplicatesSkipped.incrementAndGet();
+                        return;
+                    }
+                    discovered.incrementAndGet();
+
+                    try {
+                        concurrencyLimit.acquire();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Sync interrupted while waiting for capacity", e);
                     }
 
-                    for (Future<?> future : futures) {
+                    outstanding.add(executor.submit(() -> {
                         try {
-                            future.get(120, TimeUnit.SECONDS);
+                            orchestrator.collectAndStore(pkg, syncRunId);
+                            processed.incrementAndGet();
                         } catch (Exception e) {
                             failed.incrementAndGet();
+                            LOG.warnv("Sync failed for {0}: {1}", pkg.canonical(), e.getMessage());
+                        } finally {
+                            concurrencyLimit.release();
                         }
-                    }
-
-                    Thread.sleep(syncConfig.rateLimitDelayMs());
-                }
-            } finally {
-                executor.shutdown();
+                    }));
+                });
+            } catch (Exception e) {
+                walkError = e;
+                LOG.error("DT pagination failed; awaiting in-flight tasks before reporting status", e);
             }
-
-            currentStatus.set(SyncStatus.completed(allPackages.size(), processed.get(), failed.get(),
-                    startTime, Instant.now()));
-            LOG.infov("Sync completed: {0} total, {1} processed, {2} failed",
-                    allPackages.size(), processed.get(), failed.get());
-
-        } catch (Exception e) {
-            currentStatus.set(SyncStatus.failed(e.getMessage(), startTime));
-            LOG.error("Sync failed", e);
+            // The try-with-resources close() on the virtual-thread executor blocks
+            // until every submitted task completes. No manual future.get() loop.
         }
+
+        if (walkError != null) {
+            currentStatus.set(SyncStatus.failed(walkError.getMessage(), startTime));
+            return;
+        }
+
+        currentStatus.set(SyncStatus.completed(
+                discovered.get(), processed.get(), failed.get(), startTime, Instant.now()));
+        LOG.infov("Sync completed: {0} discovered ({1} duplicates skipped), {2} processed, {3} failed",
+                discovered.get(), duplicatesSkipped.get(), processed.get(), failed.get());
     }
 
     public SyncStatus getStatus() {
         return currentStatus.get();
     }
 
-    private Set<PackageId> collectAllPurls() {
-        Set<PackageId> packages = new LinkedHashSet<>();
+    /**
+     * Streaming walk of Dependency Track. Emits each component's PURL string
+     * to the consumer as soon as it's seen, then discards the underlying
+     * {@link DtComponent} so it's eligible for GC immediately.
+     */
+    private void walkDependencyTrack(Consumer<String> onPurl) {
         int page = 1;
-
         while (true) {
             List<DtProject> projects = dtClient.listProjects(page, dtConfig.pageSize());
             if (projects.isEmpty()) break;
@@ -137,11 +165,7 @@ public class PurlSyncService {
 
                     for (DtComponent comp : components) {
                         if (comp.purl() != null) {
-                            try {
-                                packages.add(PackageId.fromPurl(comp.purl()));
-                            } catch (Exception e) {
-                                LOG.debugv("Invalid PURL from DT: {0}", comp.purl());
-                            }
+                            onPurl.accept(comp.purl());
                         }
                     }
                     compPage++;
@@ -149,16 +173,6 @@ public class PurlSyncService {
             }
             page++;
         }
-
-        return packages;
-    }
-
-    private <T> List<List<T>> partition(List<T> list, int size) {
-        List<List<T>> partitions = new ArrayList<>();
-        for (int i = 0; i < list.size(); i += size) {
-            partitions.add(list.subList(i, Math.min(i + size, list.size())));
-        }
-        return partitions;
     }
 
     public record SyncStatus(
@@ -170,7 +184,9 @@ public class PurlSyncService {
             Instant completedAt,
             String errorMessage
     ) {
-        public boolean isRunning() { return "RUNNING".equals(state); }
+        public boolean isRunning() {
+            return "RUNNING".equals(state);
+        }
 
         public static SyncStatus idle() {
             return new SyncStatus("IDLE", null, null, null, null, null, null);

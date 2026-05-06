@@ -171,10 +171,9 @@ sources:
 # --- Sync schedule and behavior ---
 sync:
   cron: "0 0 2 * * ?"           # 2 AM daily
+  # Max in-flight orchestrator tasks during a sync. Acts as the Semaphore permit
+  # count in the streaming sync — when saturated, DT pagination throttles itself.
   concurrency: 4
-  batchSize: 500
-  rateLimitDelayMs: 1000
-  maxRetries: 3
 
 # --- History retention ---
 history:
