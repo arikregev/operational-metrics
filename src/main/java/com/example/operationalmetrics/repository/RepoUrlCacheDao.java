@@ -1,26 +1,28 @@
 package com.example.operationalmetrics.repository;
 
+import org.jdbi.v3.sqlobject.config.RegisterConstructorMapper;
 import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
 import org.jdbi.v3.sqlobject.statement.SqlUpdate;
 
 import java.util.Optional;
 
+@RegisterConstructorMapper(RepoUrlCacheDao.RepoUrlCacheEntry.class)
 public interface RepoUrlCacheDao {
 
     record RepoUrlCacheEntry(Long packageId, String repoUrl, String repoPlatform,
                              String repoOwner, String repoName, String resolvedVia) {}
 
     @SqlUpdate("""
-            INSERT INTO repo_url_cache (package_id, repo_url, repo_platform, repo_owner, repo_name, resolved_via, created_at, updated_at)
-            VALUES (:packageId, :repoUrl, :repoPlatform, :repoOwner, :repoName, :resolvedVia, now(), now())
+            INSERT INTO repo_url_cache (package_id, repo_url, repo_platform, repo_owner, repo_name, resolved_via)
+            VALUES (:packageId, :repoUrl, :repoPlatform, :repoOwner, :repoName, :resolvedVia)
             ON CONFLICT (package_id) DO UPDATE SET
                 repo_url = EXCLUDED.repo_url,
                 repo_platform = EXCLUDED.repo_platform,
                 repo_owner = EXCLUDED.repo_owner,
                 repo_name = EXCLUDED.repo_name,
                 resolved_via = EXCLUDED.resolved_via,
-                updated_at = now()
+                resolved_at = now()
             """)
     void upsert(@Bind("packageId") Long packageId,
                 @Bind("repoUrl") String repoUrl,
