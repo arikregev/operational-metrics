@@ -11,7 +11,7 @@ import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
 @Produces(MediaType.APPLICATION_JSON)
 public interface DepsDevClient {
     @GET @Path("/v3alpha/purl/{purl}")
-    DepsDevPurlResponse lookupPurl(@PathParam("purl") String encodedPurl);
+    DepsDevPurlResponse lookupPurl(@PathParam("purl") String purl);
 
     @GET @Path("/v3/projects/{projectId}")
     DepsDevProject getProject(@PathParam("projectId") String projectId);

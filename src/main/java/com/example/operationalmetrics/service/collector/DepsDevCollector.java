@@ -15,8 +15,6 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jboss.logging.Logger;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 @ApplicationScoped
@@ -51,11 +49,13 @@ public class DepsDevCollector implements MetricsCollector {
     @Override
     public PartialMetrics collect(PackageId packageId, Optional<RepoUrl> repoUrl) {
         var partial = new PartialMetrics();
-        String encodedPurl = URLEncoder.encode(packageId.canonical(), StandardCharsets.UTF_8);
 
+        // Pass raw values to JAX-RS @PathParam — Quarkus REST Client percent-encodes
+        // them exactly once. Manually URL-encoding first produced double-encoding
+        // (pkg%253Anpm%252F...) which deps.dev returned HTTP 400 for.
         DepsDevPurlResponse purlResponse;
         try {
-            purlResponse = depsDevClient.lookupPurl(encodedPurl);
+            purlResponse = depsDevClient.lookupPurl(packageId.canonical());
         } catch (Exception e) {
             LOG.warnv("deps.dev PURL lookup failed for {0}: {1}", packageId.canonical(), e.getMessage());
             return partial;
@@ -75,8 +75,7 @@ public class DepsDevCollector implements MetricsCollector {
             }
 
             try {
-                DepsDevProject project = depsDevClient.getProject(
-                        URLEncoder.encode(projectId, StandardCharsets.UTF_8));
+                DepsDevProject project = depsDevClient.getProject(projectId);
                 mapProjectToPartial(project, partial);
             } catch (Exception e) {
                 LOG.debugv("deps.dev project lookup failed for {0}: {1}", projectId, e.getMessage());
@@ -86,7 +85,7 @@ public class DepsDevCollector implements MetricsCollector {
         try {
             var dependents = depsDevClient.getDependents(
                     mapPurlTypeToSystem(packageId.purlType()),
-                    encodeName(packageId),
+                    formatName(packageId),
                     purlResponse.versionKey() != null ? purlResponse.versionKey().version() : "");
             if (dependents != null) {
                 partial.setDependentPackagesCount(dependents.dependentCount());
@@ -155,13 +154,12 @@ public class DepsDevCollector implements MetricsCollector {
         };
     }
 
-    private String encodeName(PackageId packageId) {
-        String name;
+    private String formatName(PackageId packageId) {
+        // Maven on deps.dev uses "groupId:artifactId" as the package name.
+        // No URL-encoding here — JAX-RS @PathParam handles that exactly once.
         if ("maven".equals(packageId.purlType()) && packageId.namespace() != null) {
-            name = packageId.namespace() + ":" + packageId.name();
-        } else {
-            name = packageId.name();
+            return packageId.namespace() + ":" + packageId.name();
         }
-        return URLEncoder.encode(name, StandardCharsets.UTF_8);
+        return packageId.name();
     }
 }
