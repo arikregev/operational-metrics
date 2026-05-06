@@ -151,9 +151,7 @@ Priority is "lower number wins" when the same field is provided by multiple sour
 
 ```properties
 metrics.sync.cron=0 0 2 * * ?      # daily at 02:00
-metrics.sync.concurrency=4
-metrics.sync.batch-size=500
-metrics.sync.rate-limit-delay-ms=1000
+metrics.sync.concurrency=4         # max in-flight orchestrator tasks
 metrics.history.retention-days=90
 metrics.history.purge-cron=0 0 3 * * ?   # daily at 03:00
 metrics.api.on-demand-concurrency=4

@@ -32,9 +32,6 @@ data:
   # --- Sync ---
   METRICS_SYNC_CRON: {{ .Values.sync.cron | quote }}
   METRICS_SYNC_CONCURRENCY: {{ .Values.sync.concurrency | quote }}
-  METRICS_SYNC_BATCH_SIZE: {{ .Values.sync.batchSize | quote }}
-  METRICS_SYNC_RATE_LIMIT_DELAY_MS: {{ .Values.sync.rateLimitDelayMs | quote }}
-  METRICS_SYNC_MAX_RETRIES: {{ .Values.sync.maxRetries | quote }}
 
   # --- History ---
   METRICS_HISTORY_RETENTION_DAYS: {{ .Values.history.retentionDays | quote }}

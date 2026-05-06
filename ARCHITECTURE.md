@@ -258,31 +258,31 @@ sequenceDiagram
 
     CRON->>SYNC: runFullSync()
     SYNC->>SYNC: generate sync_run_id (UUID)
+    SYNC->>SYNC: open virtual-thread executor + Semaphore(concurrency)
 
-    loop projects pages
+    loop DT pagination (streaming)
         SYNC->>DT: GET /api/v1/project?page=N
         DT-->>SYNC: List<DtProject>
         loop components pages per project
             SYNC->>DT: GET /api/v1/component/project/{uuid}?page=N
             DT-->>SYNC: List<DtComponent>
+            loop each PURL
+                SYNC->>SYNC: parse + dedupe via in-memory Set<PackageId>
+                SYNC->>SYNC: Semaphore.acquire() — blocks if N permits held
+                par concurrent VT (one per PURL, capped at N)
+                    SYNC->>ORC: collectAndStore(packageId, syncRunId)
+                    ORC->>DB: upsert package + metrics + history + fetch log
+                    ORC-->>SYNC: Semaphore.release()
+                end
+            end
         end
     end
 
-    SYNC->>SYNC: parse purl, strip version, dedupe by (type, ns, name)
-    SYNC->>DB: upsert package rows
-
-    loop batches of size N
-        par concurrent (configurable)
-            SYNC->>ORC: collectAndStore(packageId, syncRunId)
-            ORC->>DB: upsert metrics + insert history + insert fetch log
-        end
-        SYNC->>SYNC: sleep rate-limit-delay-ms
-    end
-
-    SYNC->>SYNC: update SyncStatus
+    SYNC->>SYNC: try-with-resources close: await all in-flight VTs
+    SYNC->>SYNC: update SyncStatus(COMPLETED)
 ```
 
-Sync is single-instance: the service uses an `AtomicReference<SyncStatus>` to short-circuit overlapping triggers. Concurrency, batch size, and inter-batch delay are all in `metrics.sync.*` config.
+Sync is single-instance: an `AtomicReference<SyncStatus>` short-circuits overlapping triggers. The Semaphore caps simultaneous orchestrator tasks at `metrics.sync.concurrency`; if upstream APIs are slow, the DT-walking thread blocks at `Semaphore.acquire()` and pagination naturally throttles to match downstream throughput. Heap usage is bounded by `concurrency × per-task footprint` rather than scaling with the total PURL count.
 
 ---
 
@@ -361,7 +361,7 @@ CycloneDX format is auto-detected by the `BomParserFactory`. Components without 
 | Source | Limit | Strategy |
 |---|---|---|
 | OpenSSF Scorecard | No published limit, CDN-cached | Trust the CDN; back off on 5xx |
-| deps.dev | Not documented | `metrics.sync.rate-limit-delay-ms` between batches |
+| deps.dev | Not documented | Implicit pacing via `metrics.sync.concurrency` Semaphore (max N in flight) |
 | ecosyste.ms | 5K/hr → 15K/hr with email in `User-Agent` | `ECOSYSTEMS_CONTACT_EMAIL` is wired into the client header |
 | GitHub | 5K/hr authenticated | `GITHUB_TOKEN` required; collector logs and degrades gracefully on failure |
 
@@ -373,7 +373,7 @@ A failure in any one collector is contained: the orchestrator catches the except
 
 - **Per-API-request:** synchronous (the calling thread executes everything).
 - **Bulk API:** fixed thread pool sized to `metrics.api.on-demand-concurrency`.
-- **Scheduled sync:** fixed thread pool sized to `metrics.sync.concurrency`, processing batches of `metrics.sync.batch-size` at a time, with a `metrics.sync.rate-limit-delay-ms` sleep between batches.
+- **Scheduled sync:** virtual-thread executor with a `Semaphore` of `metrics.sync.concurrency` permits. Producer (DT walker) and consumers (orchestrator tasks) interleave — PURLs are dispatched as discovered, not buffered. Heap is bounded by `concurrency × per-task footprint`, independent of total PURL count.
 - **Sync trigger guard:** `AtomicReference<SyncStatus>` prevents overlapping syncs.
 
 ### Why JDBI, not Hibernate
