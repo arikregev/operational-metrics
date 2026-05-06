@@ -2,6 +2,7 @@ package com.example.operationalmetrics.client.ecosystems;
 
 import com.example.operationalmetrics.client.ecosystems.dto.EcosystemsBulkRequest;
 import com.example.operationalmetrics.client.ecosystems.dto.EcosystemsPackage;
+import com.example.operationalmetrics.client.ecosystems.dto.EcosystemsVersion;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -37,4 +38,13 @@ public interface EcosystemsClient {
 
     @POST @Path("/api/v1/packages/bulk_lookup")
     List<EcosystemsPackage> bulkLookup(EcosystemsBulkRequest request);
+
+    @GET @Path("/api/v1/registries/{registry}/packages/{packageName}/versions")
+    List<EcosystemsVersion> versionsList(@PathParam("registry") String registry,
+                                         @PathParam("packageName") String packageName);
+
+    @GET @Path("/api/v1/registries/{registry}/packages/{packageName}/versions/{versionNumber}")
+    EcosystemsVersion versionInfo(@PathParam("registry") String registry,
+                                  @PathParam("packageName") String packageName,
+                                  @PathParam("versionNumber") String versionNumber);
 }

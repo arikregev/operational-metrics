@@ -51,6 +51,7 @@ class MetricsResourceTest {
                 null, null, null, null, null, null,
                 null, "MIT",
                 List.of("SCORECARD"),
+                null,                                      // versionInfo
                 Instant.parse("2026-04-30T12:00:00Z")
         );
     }

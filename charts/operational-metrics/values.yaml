@@ -149,24 +149,51 @@ github:
   existingSecretKey: "github-token"
   apiUrl: "https://api.github.com"
 
+# --- Snyk (Enterprise plan + service-account token required to enable) ---
+snyk:
+  enabled: false
+  token: ""                  # provide via existingSecret in production
+  existingSecret: ""         # if set, must contain key 'snyk-token'
+  existingSecretKey: "snyk-token"
+  orgId: ""                  # required when enabled — Snyk org_id (UUID)
+  apiUrl: "https://api.snyk.io"
+  apiVersion: "2024-10-15"
+
 # --- ecosyste.ms (used for polite-pool 15K/hr rate limit) ---
 ecosystems:
   contactEmail: "ops@example.com"
 
 # --- Source priorities (1 = highest) ---
 sources:
+  snyk:
+    enabled: false
+    priority: 1
   scorecard:
     enabled: true
-    priority: 1
+    priority: 2
   depsdev:
     enabled: true
-    priority: 2
+    priority: 3
   ecosystems:
     enabled: true
-    priority: 3
+    priority: 4
   github:
     enabled: true
-    priority: 4
+    priority: 5
+
+# --- RepoMetaAnalyzer: per-version release-date tracking ---
+repoMetaAnalyzer:
+  enabled: true
+  bulk:
+    refreshAfterDays: 7
+    source:
+      ecosystems: { priority: 1 }
+      depsdev:    { priority: 2 }
+  perVersion:
+    source:
+      snyk:       { priority: 1 }
+      ecosystems: { priority: 2 }
+      depsdev:    { priority: 3 }
 
 # --- Sync schedule and behavior ---
 sync:

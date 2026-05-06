@@ -6,6 +6,11 @@ import com.example.operationalmetrics.client.depsdev.dto.DepsDevPurlResponse.Dep
 import com.example.operationalmetrics.client.depsdev.dto.DepsDevPurlResponse.DepsDevRelatedProject;
 import com.example.operationalmetrics.client.ecosystems.EcosystemsClient;
 import com.example.operationalmetrics.client.ecosystems.dto.EcosystemsPackage;
+import com.example.operationalmetrics.client.snyk.SnykClient;
+import com.example.operationalmetrics.client.snyk.dto.SnykPackageDetails;
+import com.example.operationalmetrics.client.snyk.dto.SnykPackageHealth;
+import com.example.operationalmetrics.client.snyk.dto.SnykPackageResponse;
+import com.example.operationalmetrics.config.SnykConfig;
 import com.example.operationalmetrics.model.MetricsSource;
 import com.example.operationalmetrics.model.PackageId;
 import com.example.operationalmetrics.model.RepoUrl;
@@ -31,6 +36,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,6 +44,12 @@ class RepoUrlResolverTest {
 
     @Mock
     private Jdbi jdbi;
+
+    @Mock
+    private SnykClient snykClient;
+
+    @Mock
+    private SnykConfig snykConfig;
 
     @Mock
     private DepsDevClient depsDevClient;
@@ -53,7 +65,7 @@ class RepoUrlResolverTest {
 
     @BeforeEach
     void setUp() {
-        resolver = new RepoUrlResolver(jdbi, depsDevClient, ecosystemsClient);
+        resolver = new RepoUrlResolver(jdbi, snykClient, snykConfig, depsDevClient, ecosystemsClient);
         packageId = new PackageId("maven", "org.apache.logging.log4j", "log4j-core");
 
         // Stub jdbi.withExtension to invoke callback with the mocked dao — lenient because cache-only tests do not call resolve().
@@ -62,6 +74,13 @@ class RepoUrlResolverTest {
                     ExtensionCallback<Object, RepoUrlCacheDao, Exception> callback = inv.getArgument(1);
                     return callback.withExtension(repoUrlCacheDao);
                 });
+
+        // Default: Snyk disabled so existing tests behave like the legacy chain
+        // (cache → deps.dev → ecosyste.ms). Lenient because cache-hit tests
+        // never read the snyk config.
+        lenient().when(snykConfig.enabled()).thenReturn(false);
+        lenient().when(snykConfig.orgId()).thenReturn(Optional.empty());
+        lenient().when(snykConfig.apiVersion()).thenReturn("2024-10-15");
     }
 
     private void stubUseExtension() throws Exception {
@@ -70,6 +89,18 @@ class RepoUrlResolverTest {
             consumer.useExtension(repoUrlCacheDao);
             return null;
         }).when(jdbi).useExtension(eq(RepoUrlCacheDao.class), any(ExtensionConsumer.class));
+    }
+
+    private SnykPackageResponse snykResponseWithRepoUrl(String repoUrl) {
+        SnykPackageDetails details = new SnykPackageDetails(null, null, repoUrl, null, null);
+        SnykPackageHealth health = new SnykPackageHealth(null, null, null, null, null);
+        SnykPackageResponse.Attributes attrs = new SnykPackageResponse.Attributes(
+                "maven", null, null, null, details, health,
+                "pkg:maven/org.apache.logging.log4j/log4j-core",
+                "log4j-core");
+        SnykPackageResponse.Data data = new SnykPackageResponse.Data(
+                "pkg:maven/org.apache.logging.log4j/log4j-core", "package", attrs);
+        return new SnykPackageResponse(data);
     }
 
     @Test
@@ -88,6 +119,7 @@ class RepoUrlResolverTest {
         assertThat(result.get().name()).isEqualTo("log4j2");
         verify(depsDevClient, never()).lookupPurl(anyString());
         verify(ecosystemsClient, never()).lookupByPurl(anyString());
+        verifyNoInteractions(snykClient);
     }
 
     @Test
@@ -109,6 +141,8 @@ class RepoUrlResolverTest {
         assertThat(result.get().owner()).isEqualTo("apache");
         assertThat(result.get().name()).isEqualTo("log4j2");
         verify(ecosystemsClient, never()).lookupByPurl(anyString());
+        // Snyk is disabled by default in setUp() so it's never called.
+        verifyNoInteractions(snykClient);
         // Should cache the result via DEPS_DEV
         verify(repoUrlCacheDao).upsert(eq(42L), eq("https://github.com/apache/log4j2"),
                 eq("github.com"), eq("apache"), eq("log4j2"), eq("DEPS_DEV"));
@@ -215,5 +249,101 @@ class RepoUrlResolverTest {
 
         // Should not throw
         resolver.cache(99L, repoUrl, MetricsSource.SCORECARD);
+    }
+
+    // ---------- Snyk chain tests ----------
+
+    @Test
+    void resolve_snykEnabled_winsOverDepsdev() throws Exception {
+        when(repoUrlCacheDao.findByPackageId(42L)).thenReturn(Optional.empty());
+        stubUseExtension();
+
+        when(snykConfig.enabled()).thenReturn(true);
+        when(snykConfig.orgId()).thenReturn(Optional.of("org-123"));
+        when(snykClient.getPackage(eq("org-123"), eq("maven"),
+                eq("org.apache.logging.log4j:log4j-core"), eq("2024-10-15")))
+                .thenReturn(snykResponseWithRepoUrl("https://github.com/apache/log4j2"));
+
+        Optional<RepoUrl> result = resolver.resolve(packageId, 42L);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().url()).isEqualTo("https://github.com/apache/log4j2");
+        // deps.dev and ecosyste.ms should not be queried — Snyk wins.
+        verify(depsDevClient, never()).lookupPurl(anyString());
+        verify(ecosystemsClient, never()).lookupByPurl(anyString());
+        // Cached as resolved via SNYK.
+        verify(repoUrlCacheDao).upsert(eq(42L), eq("https://github.com/apache/log4j2"),
+                eq("github.com"), eq("apache"), eq("log4j2"), eq("SNYK"));
+    }
+
+    @Test
+    void resolve_snykDisabled_skipsToDepsdev() throws Exception {
+        when(repoUrlCacheDao.findByPackageId(42L)).thenReturn(Optional.empty());
+        stubUseExtension();
+
+        // Snyk disabled — already the default in setUp(). Verify deps.dev runs first.
+        DepsDevPurlResponse response = new DepsDevPurlResponse(
+                null, null,
+                List.of(new DepsDevRelatedProject(
+                        new DepsDevProjectKey("github.com/apache/log4j2"), null, null)),
+                null);
+        when(depsDevClient.lookupPurl(anyString())).thenReturn(response);
+
+        Optional<RepoUrl> result = resolver.resolve(packageId, 42L);
+
+        assertThat(result).isPresent();
+        verifyNoInteractions(snykClient);
+        // Cached via DEPS_DEV.
+        verify(repoUrlCacheDao).upsert(eq(42L), eq("https://github.com/apache/log4j2"),
+                eq("github.com"), eq("apache"), eq("log4j2"), eq("DEPS_DEV"));
+    }
+
+    @Test
+    void resolve_snykEnabledButReturnsNothing_fallsBackToDepsdev() throws Exception {
+        when(repoUrlCacheDao.findByPackageId(42L)).thenReturn(Optional.empty());
+        stubUseExtension();
+
+        when(snykConfig.enabled()).thenReturn(true);
+        when(snykConfig.orgId()).thenReturn(Optional.of("org-123"));
+        // Snyk returns a response with no repository_url — should fall through.
+        when(snykClient.getPackage(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(snykResponseWithRepoUrl(null));
+
+        DepsDevPurlResponse response = new DepsDevPurlResponse(
+                null, null,
+                List.of(new DepsDevRelatedProject(
+                        new DepsDevProjectKey("github.com/apache/log4j2"), null, null)),
+                null);
+        when(depsDevClient.lookupPurl(anyString())).thenReturn(response);
+
+        Optional<RepoUrl> result = resolver.resolve(packageId, 42L);
+
+        assertThat(result).isPresent();
+        verify(repoUrlCacheDao).upsert(eq(42L), eq("https://github.com/apache/log4j2"),
+                eq("github.com"), eq("apache"), eq("log4j2"), eq("DEPS_DEV"));
+    }
+
+    @Test
+    void resolve_snykThrows_fallsBackToDepsdev() throws Exception {
+        when(repoUrlCacheDao.findByPackageId(42L)).thenReturn(Optional.empty());
+        stubUseExtension();
+
+        when(snykConfig.enabled()).thenReturn(true);
+        when(snykConfig.orgId()).thenReturn(Optional.of("org-123"));
+        when(snykClient.getPackage(anyString(), anyString(), anyString(), anyString()))
+                .thenThrow(new RuntimeException("snyk down"));
+
+        DepsDevPurlResponse response = new DepsDevPurlResponse(
+                null, null,
+                List.of(new DepsDevRelatedProject(
+                        new DepsDevProjectKey("github.com/apache/log4j2"), null, null)),
+                null);
+        when(depsDevClient.lookupPurl(anyString())).thenReturn(response);
+
+        Optional<RepoUrl> result = resolver.resolve(packageId, 42L);
+
+        assertThat(result).isPresent();
+        verify(repoUrlCacheDao).upsert(eq(42L), eq("https://github.com/apache/log4j2"),
+                eq("github.com"), eq("apache"), eq("log4j2"), eq("DEPS_DEV"));
     }
 }

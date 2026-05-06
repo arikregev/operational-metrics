@@ -38,10 +38,14 @@ public class OperationalMetricsEntity {
     // Activity
     private Instant lastCommitAt;
     private Instant lastReleaseAt;
+    private String lastReleaseVersion;
+    private String lastReleaseVersionSource;
+    private Instant firstReleaseAt;
     private String commitFrequency52w;
     private Integer contributorCount;
     private Boolean isArchived;
     private Boolean isDeprecated;
+    private String snykRating;
 
     // Community
     private Float communityHealthPct;
@@ -141,6 +145,15 @@ public class OperationalMetricsEntity {
     public Instant getLastReleaseAt() { return lastReleaseAt; }
     public void setLastReleaseAt(Instant v) { this.lastReleaseAt = v; }
 
+    public String getLastReleaseVersion() { return lastReleaseVersion; }
+    public void setLastReleaseVersion(String v) { this.lastReleaseVersion = v; }
+
+    public String getLastReleaseVersionSource() { return lastReleaseVersionSource; }
+    public void setLastReleaseVersionSource(String v) { this.lastReleaseVersionSource = v; }
+
+    public Instant getFirstReleaseAt() { return firstReleaseAt; }
+    public void setFirstReleaseAt(Instant v) { this.firstReleaseAt = v; }
+
     public String getCommitFrequency52w() { return commitFrequency52w; }
     public void setCommitFrequency52w(String v) { this.commitFrequency52w = v; }
 
@@ -152,6 +165,9 @@ public class OperationalMetricsEntity {
 
     public Boolean getIsDeprecated() { return isDeprecated; }
     public void setIsDeprecated(Boolean v) { this.isDeprecated = v; }
+
+    public String getSnykRating() { return snykRating; }
+    public void setSnykRating(String v) { this.snykRating = v; }
 
     public Float getCommunityHealthPct() { return communityHealthPct; }
     public void setCommunityHealthPct(Float v) { this.communityHealthPct = v; }

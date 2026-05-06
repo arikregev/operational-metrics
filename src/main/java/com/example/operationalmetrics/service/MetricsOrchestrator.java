@@ -1,5 +1,6 @@
 package com.example.operationalmetrics.service;
 
+import com.example.operationalmetrics.config.RepoMetaAnalyzerConfig;
 import com.example.operationalmetrics.config.SourceConfig;
 import com.example.operationalmetrics.model.*;
 import com.example.operationalmetrics.repository.MetricsFetchLogDao;
@@ -23,15 +24,21 @@ public class MetricsOrchestrator {
     private final SourceConfig sourceConfig;
     private final Map<MetricsSource, MetricsCollector> collectors;
     private final RepoUrlResolver repoUrlResolver;
+    private final RepoMetaAnalyzer repoMetaAnalyzer;
+    private final RepoMetaAnalyzerConfig repoMetaAnalyzerConfig;
     private final Jdbi jdbi;
 
     @Inject
     public MetricsOrchestrator(SourceConfig sourceConfig,
                                Instance<MetricsCollector> collectorInstances,
                                RepoUrlResolver repoUrlResolver,
+                               RepoMetaAnalyzer repoMetaAnalyzer,
+                               RepoMetaAnalyzerConfig repoMetaAnalyzerConfig,
                                Jdbi jdbi) {
         this.sourceConfig = sourceConfig;
         this.repoUrlResolver = repoUrlResolver;
+        this.repoMetaAnalyzer = repoMetaAnalyzer;
+        this.repoMetaAnalyzerConfig = repoMetaAnalyzerConfig;
         this.jdbi = jdbi;
 
         this.collectors = new HashMap<>();
@@ -111,6 +118,25 @@ public class MetricsOrchestrator {
             }
         });
 
+        // Per-version metadata population:
+        //   Flow A — bulk version discovery via list-capable sources (recency-skipped).
+        //   Flow B — backfill the latest version specifically, so Snyk's authoritative
+        //            published_at lands in package_version when Snyk is enabled.
+        // Both wrapped in try/catch — a failure here must not invalidate the merged
+        // metrics that were just persisted above.
+        if (repoMetaAnalyzerConfig.enabled()) {
+            try {
+                repoMetaAnalyzer.analyze(packageId, packageDbId);
+                if (merged.getLastReleaseVersion() != null) {
+                    repoMetaAnalyzer.findOrFetchByVersion(packageId, packageDbId,
+                            merged.getLastReleaseVersion());
+                }
+            } catch (Exception e) {
+                LOG.debugv("RepoMetaAnalyzer failed for {0}: {1}",
+                        packageId.canonical(), e.getMessage());
+            }
+        }
+
         return entity;
     }
 
@@ -146,10 +172,14 @@ public class MetricsOrchestrator {
 
         entity.setLastCommitAt(merged.getLastCommitAt());
         entity.setLastReleaseAt(merged.getLastReleaseAt());
+        entity.setLastReleaseVersion(merged.getLastReleaseVersion());
+        entity.setLastReleaseVersionSource(merged.getLastReleaseVersionSource());
+        entity.setFirstReleaseAt(merged.getFirstReleaseAt());
         entity.setCommitFrequency52w(merged.getCommitFrequency52w());
         entity.setContributorCount(merged.getContributorCount());
         entity.setIsArchived(merged.getIsArchived());
         entity.setIsDeprecated(merged.getIsDeprecated());
+        entity.setSnykRating(merged.getSnykRating());
 
         entity.setCommunityHealthPct(merged.getCommunityHealthPct());
         entity.setAvgIssueCloseTimeDays(merged.getAvgIssueCloseTimeDays());

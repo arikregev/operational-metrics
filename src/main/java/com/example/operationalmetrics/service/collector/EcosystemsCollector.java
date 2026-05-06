@@ -84,6 +84,15 @@ public class EcosystemsCollector implements MetricsCollector {
             partial.setLastReleaseAt(pkg.getLatestReleasePublishedAt());
         }
 
+        if (pkg.getLatestReleaseNumber() != null && !pkg.getLatestReleaseNumber().isBlank()) {
+            partial.setLastReleaseVersion(pkg.getLatestReleaseNumber());
+            partial.setLastReleaseVersionSource(MetricsSource.ECOSYSTEMS.name());
+        }
+
+        if (pkg.getFirstReleasePublishedAt() != null) {
+            partial.setFirstReleaseAt(pkg.getFirstReleasePublishedAt());
+        }
+
         if (pkg.getRankings() != null) {
             partial.setRankingPercentile(pkg.getRankings().getAverage());
         }

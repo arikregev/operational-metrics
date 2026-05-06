@@ -5,6 +5,7 @@ import com.example.operationalmetrics.dto.MetricsBulkResponse;
 import com.example.operationalmetrics.dto.MetricsResponse;
 import com.example.operationalmetrics.model.OperationalMetricsEntity;
 import com.example.operationalmetrics.model.PackageId;
+import com.example.operationalmetrics.model.PackageVersionEntry;
 import com.example.operationalmetrics.repository.OperationalMetricsDao;
 import com.example.operationalmetrics.repository.PackageDao;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -12,6 +13,8 @@ import jakarta.inject.Inject;
 import org.jdbi.v3.core.Jdbi;
 import org.jboss.logging.Logger;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -22,23 +25,43 @@ public class MetricsQueryService {
 
     private final Jdbi jdbi;
     private final MetricsOrchestrator orchestrator;
+    private final RepoMetaAnalyzer repoMetaAnalyzer;
     private final ApiConfig apiConfig;
 
     @Inject
-    public MetricsQueryService(Jdbi jdbi, MetricsOrchestrator orchestrator, ApiConfig apiConfig) {
+    public MetricsQueryService(Jdbi jdbi, MetricsOrchestrator orchestrator,
+                               RepoMetaAnalyzer repoMetaAnalyzer, ApiConfig apiConfig) {
         this.jdbi = jdbi;
         this.orchestrator = orchestrator;
+        this.repoMetaAnalyzer = repoMetaAnalyzer;
         this.apiConfig = apiConfig;
     }
 
     public MetricsResponse findByPurl(String purlString) {
         PackageId id = PackageId.fromPurl(purlString);
-        return findOrFetch(id);
+        String version = extractVersion(purlString);
+        return findOrFetch(id, version);
     }
 
     public MetricsResponse findByCoordinates(String type, String namespace, String name) {
         PackageId id = new PackageId(type, namespace, name);
-        return findOrFetch(id);
+        return findOrFetch(id, null);
+    }
+
+    /** Extracts the version segment from a PURL string. Returns null when the PURL has no @version. */
+    static String extractVersion(String purlString) {
+        if (purlString == null) return null;
+        int at = purlString.indexOf('@');
+        if (at < 0 || at == purlString.length() - 1) return null;
+        // Strip qualifiers / subpath if present
+        String rest = purlString.substring(at + 1);
+        int end = rest.length();
+        int q = rest.indexOf('?');
+        int h = rest.indexOf('#');
+        if (q >= 0) end = Math.min(end, q);
+        if (h >= 0) end = Math.min(end, h);
+        String v = rest.substring(0, end).trim();
+        return v.isEmpty() ? null : v;
     }
 
     public MetricsBulkResponse findBulk(List<String> purls) {
@@ -111,19 +134,46 @@ public class MetricsQueryService {
         return new MetricsBulkResponse(results, errors);
     }
 
-    private MetricsResponse findOrFetch(PackageId id) {
+    private MetricsResponse findOrFetch(PackageId id, String requestedVersion) {
         Optional<OperationalMetricsEntity> cached = jdbi.withExtension(OperationalMetricsDao.class,
                 dao -> dao.findByCanonical(id.canonical()));
 
-        if (cached.isPresent()) {
-            return toResponse(cached.get());
-        }
+        OperationalMetricsEntity entity = cached.orElseGet(() -> orchestrator.collectAndStore(id, null));
+        MetricsResponse.VersionInfo versionInfo = buildVersionInfo(id, entity, requestedVersion);
+        return toResponse(entity, versionInfo);
+    }
 
-        OperationalMetricsEntity entity = orchestrator.collectAndStore(id, null);
-        return toResponse(entity);
+    /**
+     * Resolves the requested version (if any) to a {@link MetricsResponse.VersionInfo}.
+     * Calls {@link RepoMetaAnalyzer#findOrFetchByVersion} which is cache-first;
+     * remote lookup only on miss. Returns null when no version was requested.
+     */
+    private MetricsResponse.VersionInfo buildVersionInfo(PackageId id, OperationalMetricsEntity entity, String version) {
+        if (version == null || entity.getPackageId() == null) return null;
+        try {
+            Optional<PackageVersionEntry> entry = repoMetaAnalyzer.findOrFetchByVersion(
+                    id, entity.getPackageId(), version);
+            if (entry.isEmpty()) return null;
+            PackageVersionEntry e = entry.get();
+            Long daysSinceRelease = e.releasedAt() == null ? null
+                    : Duration.between(e.releasedAt(), Instant.now()).toDays();
+            Long daysOlderThanLatest = (e.releasedAt() != null && entity.getLastReleaseAt() != null)
+                    ? Duration.between(e.releasedAt(), entity.getLastReleaseAt()).toDays()
+                    : null;
+            return new MetricsResponse.VersionInfo(e.version(), e.releasedAt(),
+                    e.resolvedVia(), daysSinceRelease, daysOlderThanLatest);
+        } catch (Exception ex) {
+            LOG.debugv("Version-info lookup failed for {0}@{1}: {2}",
+                    id.canonical(), version, ex.getMessage());
+            return null;
+        }
     }
 
     public static MetricsResponse toResponse(OperationalMetricsEntity e) {
+        return toResponse(e, null);
+    }
+
+    public static MetricsResponse toResponse(OperationalMetricsEntity e, MetricsResponse.VersionInfo versionInfo) {
         return new MetricsResponse(
                 e.getPurlCanonical(),
                 e.getPurlType(),
@@ -135,8 +185,12 @@ public class MetricsQueryService {
                 new MetricsResponse.PopularityInfo(
                         e.getStarsCount(), e.getForksCount(), e.getDownloadCount(), e.getRankingPercentile()),
                 new MetricsResponse.ActivityInfo(
-                        e.getLastCommitAt(), e.getLastReleaseAt(), e.getContributorCount(),
-                        e.getIsArchived(), e.getIsDeprecated()),
+                        e.getLastCommitAt(), e.getLastReleaseAt(),
+                        e.getLastReleaseVersion(), e.getLastReleaseVersionSource(),
+                        e.getFirstReleaseAt(),
+                        e.getContributorCount(),
+                        e.getIsArchived(), e.getIsDeprecated(),
+                        e.getSnykRating()),
                 new MetricsResponse.CommunityInfo(
                         e.getCommunityHealthPct(), e.getAvgIssueCloseTimeDays(), e.getAvgPrCloseTimeDays(),
                         e.getPrAuthorsCount(), e.getMergedPrCount()),
@@ -147,6 +201,7 @@ public class MetricsQueryService {
                 e.getMaintainerCount(),
                 e.getLicense(),
                 e.getSourcesUsed(),
+                versionInfo,
                 e.getFetchedAt()
         );
     }
