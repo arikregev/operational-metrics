@@ -2,6 +2,7 @@ package com.example.operationalmetrics.client.ecosystems;
 
 import com.example.operationalmetrics.client.ecosystems.dto.EcosystemsBulkRequest;
 import com.example.operationalmetrics.client.ecosystems.dto.EcosystemsPackage;
+import com.example.operationalmetrics.client.ecosystems.dto.EcosystemsPackageRef;
 import com.example.operationalmetrics.client.ecosystems.dto.EcosystemsVersion;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -47,4 +48,26 @@ public interface EcosystemsClient {
     EcosystemsVersion versionInfo(@PathParam("registry") String registry,
                                   @PathParam("packageName") String packageName,
                                   @PathParam("versionNumber") String versionNumber);
+
+    /**
+     * Recently-released packages on a given registry, sorted descending by
+     * publish date. Used by VersionsChangesFeedService to discover new
+     * versions of packages we already track within ~15 min of release.
+     *
+     * <p>The endpoint has no native {@code since=} filter; the caller is
+     * expected to paginate descending and stop when results dip below a
+     * watermark.
+     *
+     * @param sort  use {@code "latest_release_published_at"} for the
+     *              changes-feed semantic. Do NOT use {@code "updated_at"} —
+     *              that bumps on metadata re-scrape and produces false
+     *              positives.
+     * @param order use {@code "desc"} for newest-first.
+     */
+    @GET @Path("/api/v1/registries/{registry}/packages")
+    List<EcosystemsPackageRef> recentPackages(@PathParam("registry") String registry,
+                                               @QueryParam("sort") String sort,
+                                               @QueryParam("order") String order,
+                                               @QueryParam("page") int page,
+                                               @QueryParam("per_page") int perPage);
 }

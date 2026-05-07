@@ -223,6 +223,22 @@ versionsSweep:
   batchSize: 300000              # max packages per cron firing
   rateBudgetPerSecond: 4         # token-bucket cap on outgoing version-list requests
 
+# --- Versions changes-feed (primary path: registry-driven sub-15-min discovery) ---
+# Feed and sweep are complementary: feed catches new releases within ~15 min;
+# sweep is the safety net if a feed window is missed. Default registries list
+# is empty — operators opt in by listing the ecosyste.ms registries that match
+# the PURL types they actually have in DT (e.g. "npmjs.org,pypi.org").
+# Comma-separate multiple values; the property is a Quarkus List<String>.
+versionsFeed:
+  enabled: true
+  cron: "0 */15 * * * ?"
+  registries: ""
+  perPage: 100
+  maxPagesPerPoll: 20
+  initialLookbackHours: 2
+  concurrency: 8
+  rateBudgetPerSecond: 2
+
 # --- History retention ---
 history:
   retentionDays: 90

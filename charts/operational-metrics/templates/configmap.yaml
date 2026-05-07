@@ -59,6 +59,20 @@ data:
   METRICS_VERSIONS_BATCH_SIZE: {{ .Values.versionsSweep.batchSize | quote }}
   METRICS_VERSIONS_RATE_BUDGET_PER_SECOND: {{ .Values.versionsSweep.rateBudgetPerSecond | quote }}
 
+  # --- Versions changes-feed ---
+  METRICS_VERSIONS_FEED_ENABLED: {{ .Values.versionsFeed.enabled | quote }}
+  METRICS_VERSIONS_FEED_CRON: {{ .Values.versionsFeed.cron | quote }}
+  {{- if .Values.versionsFeed.registries }}
+  # Comma-separated list of ecosyste.ms registry hostnames. Only emitted when
+  # non-empty — SmallRye's collection converter rejects empty-string values.
+  METRICS_VERSIONS_FEED_REGISTRIES: {{ .Values.versionsFeed.registries | quote }}
+  {{- end }}
+  METRICS_VERSIONS_FEED_PER_PAGE: {{ .Values.versionsFeed.perPage | quote }}
+  METRICS_VERSIONS_FEED_MAX_PAGES_PER_POLL: {{ .Values.versionsFeed.maxPagesPerPoll | quote }}
+  METRICS_VERSIONS_FEED_INITIAL_LOOKBACK_HOURS: {{ .Values.versionsFeed.initialLookbackHours | quote }}
+  METRICS_VERSIONS_FEED_CONCURRENCY: {{ .Values.versionsFeed.concurrency | quote }}
+  METRICS_VERSIONS_FEED_RATE_BUDGET_PER_SECOND: {{ .Values.versionsFeed.rateBudgetPerSecond | quote }}
+
   # --- History ---
   METRICS_HISTORY_RETENTION_DAYS: {{ .Values.history.retentionDays | quote }}
   METRICS_HISTORY_PURGE_CRON: {{ .Values.history.purgeCron | quote }}
