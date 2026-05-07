@@ -11,3 +11,5 @@ databaseChangeLog:
       file: db/changelog/005-create-repo-url-cache.sql
   - include:
       file: db/changelog/006-unique-purl-canonical.sql
+  - include:
+      file: db/changelog/007-add-version-tracking.sql

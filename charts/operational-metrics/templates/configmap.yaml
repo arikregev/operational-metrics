@@ -16,10 +16,18 @@ data:
   # --- GitHub ---
   GITHUB_API_URL: {{ .Values.github.apiUrl | quote }}
 
+  # --- Snyk ---
+  SNYK_ENABLED: {{ .Values.snyk.enabled | quote }}
+  SNYK_ORG_ID: {{ .Values.snyk.orgId | quote }}
+  SNYK_API_URL: {{ .Values.snyk.apiUrl | quote }}
+  SNYK_API_VERSION: {{ .Values.snyk.apiVersion | quote }}
+
   # --- ecosyste.ms ---
   ECOSYSTEMS_CONTACT_EMAIL: {{ .Values.ecosystems.contactEmail | quote }}
 
   # --- Source priorities ---
+  METRICS_SOURCES_SOURCE_SNYK_ENABLED: {{ .Values.sources.snyk.enabled | quote }}
+  METRICS_SOURCES_SOURCE_SNYK_PRIORITY: {{ .Values.sources.snyk.priority | quote }}
   METRICS_SOURCES_SOURCE_SCORECARD_ENABLED: {{ .Values.sources.scorecard.enabled | quote }}
   METRICS_SOURCES_SOURCE_SCORECARD_PRIORITY: {{ .Values.sources.scorecard.priority | quote }}
   METRICS_SOURCES_SOURCE_DEPSDEV_ENABLED: {{ .Values.sources.depsdev.enabled | quote }}
@@ -39,3 +47,12 @@ data:
 
   # --- API ---
   METRICS_API_ON_DEMAND_CONCURRENCY: {{ .Values.api.onDemandConcurrency | quote }}
+
+  # --- RepoMetaAnalyzer ---
+  METRICS_REPO_META_ANALYZER_ENABLED: {{ .Values.repoMetaAnalyzer.enabled | quote }}
+  METRICS_REPO_META_ANALYZER_BULK_REFRESH_AFTER_DAYS: {{ .Values.repoMetaAnalyzer.bulk.refreshAfterDays | quote }}
+  METRICS_REPO_META_ANALYZER_BULK_SOURCE_ECOSYSTEMS_PRIORITY: {{ .Values.repoMetaAnalyzer.bulk.source.ecosystems.priority | quote }}
+  METRICS_REPO_META_ANALYZER_BULK_SOURCE_DEPSDEV_PRIORITY: {{ .Values.repoMetaAnalyzer.bulk.source.depsdev.priority | quote }}
+  METRICS_REPO_META_ANALYZER_PER_VERSION_SOURCE_SNYK_PRIORITY: {{ .Values.repoMetaAnalyzer.perVersion.source.snyk.priority | quote }}
+  METRICS_REPO_META_ANALYZER_PER_VERSION_SOURCE_ECOSYSTEMS_PRIORITY: {{ .Values.repoMetaAnalyzer.perVersion.source.ecosystems.priority | quote }}
+  METRICS_REPO_META_ANALYZER_PER_VERSION_SOURCE_DEPSDEV_PRIORITY: {{ .Values.repoMetaAnalyzer.perVersion.source.depsdev.priority | quote }}

@@ -85,28 +85,30 @@ All components use **constructor injection**. There are no `@Inject` fields in t
 
 Each upstream source provides a different cross-section of the metrics surface. The orchestrator does not assume any one source is complete; instead, it merges contributions from all enabled sources.
 
-| Field | Scorecard | deps.dev | ecosyste.ms | GitHub |
-|---|:---:|:---:|:---:|:---:|
-| `scorecard_overall_score` | **★** | ✓ | ✓ | — |
-| `scorecard_checks` | **★** | ✓ | ✓ | — |
-| `stars_count` / `forks_count` | — | ✓ | ✓ | **★** |
-| `dependent_repos_count` | — | ✓ | **★** | — |
-| `dependent_packages_count` | — | ✓ | **★** | — |
-| `download_count` / `ranking_percentile` | — | — | **★** | — |
-| `commit_frequency_52w` | — | — | ✓ | **★** |
-| `contributor_count` | — | — | ✓ | **★** |
-| `community_health_pct` | — | — | — | **★** |
-| `avg_issue_close_time_days` / `avg_pr_close_time_days` | — | — | **★** | — |
-| `advisory_count` | — | ✓ | ✓ | **★** |
-| `has_slsa_provenance` | — | **★** | — | — |
-| `has_oss_fuzz` | — | **★** | — | — |
-| `last_commit_at` / `is_archived` | — | — | ✓ | **★** |
-| `maintainer_count` | — | — | **★** | — |
-| **repo URL resolution** | — | **★** | ✓ | — |
+| Field | Snyk | Scorecard | deps.dev | ecosyste.ms | GitHub |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `scorecard_overall_score` | — | **★** | ✓ | ✓ | — |
+| `scorecard_checks` | — | **★** | ✓ | ✓ | — |
+| `stars_count` / `forks_count` | ✓ | — | ✓ | ✓ | **★** |
+| `dependent_repos_count` | ✓ | — | ✓ | **★** | — |
+| `dependent_packages_count` | ✓ | — | ✓ | **★** | — |
+| `download_count` / `ranking_percentile` | ✓ | — | — | **★** | — |
+| `commit_frequency_52w` | — | — | — | ✓ | **★** |
+| `contributor_count` | — | — | — | ✓ | **★** |
+| `community_health_pct` | — | — | — | — | **★** |
+| `avg_issue_close_time_days` / `avg_pr_close_time_days` | — | — | — | **★** | — |
+| `advisory_count` | ✓ | — | ✓ | ✓ | **★** |
+| `has_slsa_provenance` | — | — | **★** | — | — |
+| `has_oss_fuzz` | — | — | **★** | — | — |
+| `last_commit_at` / `is_archived` | ✓ | — | — | ✓ | **★** |
+| `last_release_at` / `last_release_version` / `first_release_at` | ✓ | — | — | **★** | — |
+| `snyk_rating` | **★** | — | — | — | — |
+| `maintainer_count` | — | — | — | **★** | — |
+| **repo URL resolution** | ✓ | — | **★** | ✓ | — |
 
 ★ = primary / authoritative source for that field. ✓ = also provides it.
 
-The default priority order — Scorecard → deps.dev → ecosyste.ms → GitHub — reflects this: each source's strongest column lines up with where it sits in the chain.
+The default priority order — **Snyk** (1) → Scorecard (2) → deps.dev (3) → ecosyste.ms (4) → GitHub (5) — reflects this: Snyk has the broadest cross-section so it goes first when enabled; otherwise each source's strongest column lines up with where it sits in the chain. Snyk is **off by default** and only activates when both `SNYK_ENABLED=true` and a service-account token + org_id are configured.
 
 ---
 
@@ -127,22 +129,28 @@ Higher-priority sources always win. Failures from one source (HTTP errors, timeo
 sequenceDiagram
     participant ORC as MetricsOrchestrator
     participant RES as RepoUrlResolver
+    participant SK as Snyk
     participant SC as Scorecard
     participant DD as deps.dev
     participant EC as ecosyste.ms
     participant GH as GitHub
+    participant RMA as RepoMetaAnalyzer
     participant DB as PostgreSQL
 
     ORC->>DB: upsert package row (get id)
     ORC->>RES: resolve(packageId)
     RES->>DB: check repo_url_cache
     alt cache miss
-        RES->>DD: lookupPurl
+        RES->>SK: getPackage (priority 1, when enabled)
+        SK-->>RES: package_details.repository_url
+        RES->>DD: lookupPurl (fallback)
         DD-->>RES: relatedProjects
         RES->>DB: cache repo URL
     end
     RES-->>ORC: Optional<RepoUrl>
 
+    ORC->>SK: collect (priority 1, when enabled)
+    SK-->>ORC: PartialMetrics(stars/forks/downloads/advisory/version/snyk_rating/repo_url)
     ORC->>SC: collect (needs repo URL)
     SC-->>ORC: PartialMetrics(security)
     ORC->>DD: collect
@@ -156,26 +164,39 @@ sequenceDiagram
     ORC->>DB: upsert operational_metrics
     ORC->>DB: insert metrics_history (sync_run_id)
     ORC->>DB: insert metrics_fetch_log rows
+
+    ORC->>RMA: analyze (Flow A — bulk version discovery)
+    RMA->>EC: GET /registries/{r}/packages/{n}/versions
+    EC-->>RMA: List<EcosystemsVersion>
+    RMA->>DB: upsert package_version rows
+
+    ORC->>RMA: findOrFetchByVersion (Flow B — latest version backfill)
+    RMA->>SK: getPackageVersion (priority 1, when enabled)
+    SK-->>RMA: published_at
+    RMA->>DB: upsert package_version row
 ```
 
 ---
 
 ## 5. PURL → repo URL resolution
 
-Two of the four sources (Scorecard, GitHub) need an `owner/repo` pair, not a PURL. The other two (deps.dev, ecosyste.ms) accept a PURL directly **and** can also tell us the repo URL. `RepoUrlResolver` exploits that:
+Three sources can return a repository URL: **Snyk** (`package_details.repository_url`), **deps.dev** (via `relatedProjects`), and **ecosyste.ms** (`repository_url`). Two collectors that *cannot* take a PURL directly (Scorecard, GitHub) need that URL upfront. `RepoUrlResolver` exploits that:
 
 1. Look up `repo_url_cache` by `package_id` — done if hit.
-2. Call `deps.dev` `/v3alpha/purl/{purl}` and pull the first `relatedProjects[].projectKey.id` matching `github.com/...`.
-3. If empty, call `ecosyste.ms` `/api/v1/packages/lookup?purl=...` and use `repository_url`.
-4. Persist the result so subsequent runs (and other API calls) skip the lookup.
+2. Call **Snyk** `/rest/orgs/{org}/ecosystems/{eco}/packages/{n}` (when enabled and supported PURL type) and use `data.attributes.package_details.repository_url`.
+3. Call `deps.dev` `/v3alpha/purl/{purl}` and pull the first `relatedProjects[].projectKey.id` matching `github.com/...`.
+4. If still empty, call `ecosyste.ms` `/api/v1/packages/lookup?purl=...` and use `repository_url`.
+5. Persist the result so subsequent runs (and other API calls) skip the lookup.
 
-If both fail, Scorecard and GitHub are skipped for that package and the failure is logged. The remaining sources (deps.dev and ecosyste.ms) still run since they don't need the repo URL.
+If all fail, Scorecard and GitHub are skipped for that package and the failure is logged. The remaining sources (Snyk, deps.dev, ecosyste.ms) still run since they don't need the repo URL upfront.
+
+**Optimization:** the `SnykCollector`'s own `collect()` populates `partial.repoUrl` from the same `package_details.repository_url` field. The orchestrator caches that opportunistically, so on subsequent packages with overlapping repos the resolver short-circuits via the cache hit without an extra Snyk call.
 
 ---
 
 ## 6. Database schema
 
-Five tables, all under Liquibase changeset control in `src/main/resources/db/changelog/`.
+Six tables, all under Liquibase changeset control in `src/main/resources/db/changelog/`.
 
 ```mermaid
 erDiagram
@@ -183,6 +204,7 @@ erDiagram
     package ||--o{ metrics_history : "1:N snapshots"
     package ||--o{ metrics_fetch_log : "1:N audit"
     package ||--|| repo_url_cache : "1:1 mapping"
+    package ||--o{ package_version : "1:N versions"
 
     package {
         bigserial id PK
@@ -203,10 +225,24 @@ erDiagram
         bigint download_count
         real ranking_percentile
         timestamptz last_commit_at
+        timestamptz last_release_at
+        varchar last_release_version
+        varchar last_release_version_source
+        timestamptz first_release_at
+        varchar snyk_rating
         real community_health_pct
         integer advisory_count
         text_array sources_used
         timestamptz fetched_at
+    }
+
+    package_version {
+        bigserial id PK
+        bigint package_id FK
+        varchar version
+        timestamptz released_at
+        varchar resolved_via
+        timestamptz updated_at
     }
 
     metrics_history {
@@ -351,6 +387,51 @@ sequenceDiagram
 ```
 
 CycloneDX format is auto-detected by the `BomParserFactory`. Components without a PURL (e.g., file-only entries) are skipped silently. Per-package failures are collected into the response's `errors[]` rather than aborting the entire upload.
+
+---
+
+## 9b. RepoMetaAnalyzer — per-version release tracking
+
+A separate component from the metrics collectors. Populates the `package_version` table with `(version, released_at, source)` rows so callers can answer "this dependency is N versions and M days behind latest" without re-fetching upstream data.
+
+### Two flows
+
+```mermaid
+flowchart TB
+    subgraph FlowA [Flow A — bulk version discovery]
+        ANALYZE[analyze packageId, packageDbId]
+        ANALYZE --> RECENCY{updated within<br/>refreshAfterDays?}
+        RECENCY -->|yes| SKIP[skip, return cache]
+        RECENCY -->|no| BULK_PRIORITY[iterate bulk source priority]
+        BULK_PRIORITY -->|first| ECO_LIST[ecosyste.ms /versions]
+        BULK_PRIORITY -->|second| DEPSDEV_PKG[deps.dev GetPackage]
+        ECO_LIST --> UPSERT[upsert package_version rows]
+        DEPSDEV_PKG --> UPSERT
+    end
+
+    subgraph FlowB [Flow B — per-version on-demand]
+        FIND[findOrFetchByVersion]
+        FIND --> CACHE_HIT{cached and<br/>has releasedAt?}
+        CACHE_HIT -->|yes| RETURN_CACHED[return cached entry]
+        CACHE_HIT -->|no| PERVER_PRIORITY[iterate per-version source priority]
+        PERVER_PRIORITY -->|first| SNYK_VER[Snyk /versions/v]
+        PERVER_PRIORITY -->|second| ECO_VER[ecosyste.ms /versions/v]
+        PERVER_PRIORITY -->|third| DEPSDEV_VER[deps.dev GetVersion]
+        SNYK_VER --> UPSERT_ONE[upsert one row]
+        ECO_VER --> UPSERT_ONE
+        DEPSDEV_VER --> UPSERT_ONE
+    end
+```
+
+### Triggers
+
+1. **Inline during sync.** After collectors finish for a package, `MetricsOrchestrator` calls `analyze(...)` (Flow A). Recency-skipped — repeated nightly syncs don't re-fetch unchanged version lists.
+2. **Inline backfill of latest version.** Right after Flow A, the orchestrator calls `findOrFetchByVersion(...)` for `merged.lastReleaseVersion` so Snyk's authoritative `published_at` lands in `package_version` for the most-relevant version.
+3. **API caller asks about a specific version.** `MetricsResource.getByPurl` calls `MetricsQueryService.findByPurl` which extracts the version segment from the PURL and triggers Flow B. The result lands in `MetricsResponse.versionInfo` with `daysSinceRelease` and `daysOlderThanLatest` computed.
+
+### Why no Snyk in Flow A
+
+The documented Snyk REST API has only a per-version endpoint, not a list endpoint. So Snyk participates only in Flow B (and only when `snyk.enabled=true` plus `orgId` is configured). Flow A's priority list is `ecosystems` (1), `depsdev` (2).
 
 ---
 

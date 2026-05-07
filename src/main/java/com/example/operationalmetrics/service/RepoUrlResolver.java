@@ -4,6 +4,9 @@ import com.example.operationalmetrics.client.depsdev.DepsDevClient;
 import com.example.operationalmetrics.client.depsdev.dto.DepsDevPurlResponse;
 import com.example.operationalmetrics.client.ecosystems.EcosystemsClient;
 import com.example.operationalmetrics.client.ecosystems.dto.EcosystemsPackage;
+import com.example.operationalmetrics.client.snyk.SnykClient;
+import com.example.operationalmetrics.client.snyk.dto.SnykPackageResponse;
+import com.example.operationalmetrics.config.SnykConfig;
 import com.example.operationalmetrics.model.MetricsSource;
 import com.example.operationalmetrics.model.PackageId;
 import com.example.operationalmetrics.model.RepoUrl;
@@ -23,14 +26,20 @@ public class RepoUrlResolver {
     private static final Logger LOG = Logger.getLogger(RepoUrlResolver.class);
 
     private final Jdbi jdbi;
+    private final SnykClient snykClient;
+    private final SnykConfig snykConfig;
     private final DepsDevClient depsDevClient;
     private final EcosystemsClient ecosystemsClient;
 
     @Inject
     public RepoUrlResolver(Jdbi jdbi,
+                           @RestClient SnykClient snykClient,
+                           SnykConfig snykConfig,
                            @RestClient DepsDevClient depsDevClient,
                            @RestClient EcosystemsClient ecosystemsClient) {
         this.jdbi = jdbi;
+        this.snykClient = snykClient;
+        this.snykConfig = snykConfig;
         this.depsDevClient = depsDevClient;
         this.ecosystemsClient = ecosystemsClient;
     }
@@ -41,8 +50,12 @@ public class RepoUrlResolver {
             return cached;
         }
 
-        Optional<RepoUrl> resolved = resolveViaDepsdev(packageId);
-        MetricsSource resolvedVia = MetricsSource.DEPS_DEV;
+        Optional<RepoUrl> resolved = resolveViaSnyk(packageId);
+        MetricsSource resolvedVia = MetricsSource.SNYK;
+        if (resolved.isEmpty()) {
+            resolved = resolveViaDepsdev(packageId);
+            resolvedVia = MetricsSource.DEPS_DEV;
+        }
         if (resolved.isEmpty()) {
             resolved = resolveViaEcosystems(packageId);
             resolvedVia = MetricsSource.ECOSYSTEMS;
@@ -69,6 +82,41 @@ public class RepoUrlResolver {
             var entry = dao.findByPackageId(packageDbId);
             return entry.map(e -> new RepoUrl(e.repoUrl(), e.repoPlatform(), e.repoOwner(), e.repoName()));
         });
+    }
+
+    private Optional<RepoUrl> resolveViaSnyk(PackageId packageId) {
+        if (!snykConfig.enabled() || snykConfig.orgId().isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            String ecosystem = mapPurlTypeToSnykEcosystem(packageId.purlType());
+            String packageName = formatSnykPackageName(packageId);
+            if (ecosystem.isEmpty() || packageName == null || packageName.isBlank()) {
+                return Optional.empty();
+            }
+            // Skip ecosystems Snyk doesn't support.
+            if ("github".equals(ecosystem) || "gem".equals(ecosystem)) {
+                return Optional.empty();
+            }
+            SnykPackageResponse response = snykClient.getPackage(
+                    snykConfig.orgId().get(),
+                    ecosystem,
+                    packageName,
+                    snykConfig.apiVersion());
+            if (response == null || response.data() == null || response.data().attributes() == null) {
+                return Optional.empty();
+            }
+            var details = response.data().attributes().packageDetails();
+            if (details == null) return Optional.empty();
+            String url = details.repositoryUrl();
+            if (url == null || url.isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(RepoUrl.parse(url));
+        } catch (Exception e) {
+            LOG.debugv("Snyk repo URL resolution failed for {0}: {1}", packageId.canonical(), e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private Optional<RepoUrl> resolveViaDepsdev(PackageId packageId) {
@@ -110,5 +158,24 @@ public class RepoUrlResolver {
             LOG.debugv("ecosyste.ms repo URL resolution failed for {0}: {1}", packageId.canonical(), e.getMessage());
         }
         return Optional.empty();
+    }
+
+    private String mapPurlTypeToSnykEcosystem(String purlType) {
+        if (purlType == null) return "";
+        return purlType.toLowerCase();
+    }
+
+    private String formatSnykPackageName(PackageId packageId) {
+        String type = packageId.purlType() == null ? "" : packageId.purlType().toLowerCase();
+        String namespace = packageId.namespace();
+        String name = packageId.name();
+        if (namespace == null || namespace.isBlank()) {
+            return name;
+        }
+        return switch (type) {
+            case "maven" -> namespace + ":" + name;
+            case "golang", "composer", "npm" -> namespace + "/" + name;
+            default -> name;
+        };
     }
 }

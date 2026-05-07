@@ -1,6 +1,7 @@
 package com.example.operationalmetrics.model;
 
 public enum MetricsSource {
+    SNYK("snyk"),
     SCORECARD("scorecard"),
     DEPS_DEV("depsdev"),
     ECOSYSTEMS("ecosystems"),

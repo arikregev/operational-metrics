@@ -1,5 +1,6 @@
 package com.example.operationalmetrics.service;
 
+import com.example.operationalmetrics.config.RepoMetaAnalyzerConfig;
 import com.example.operationalmetrics.config.SourceConfig;
 import com.example.operationalmetrics.model.MetricsFetchLog;
 import com.example.operationalmetrics.model.MetricsSource;
@@ -78,6 +79,12 @@ class MetricsOrchestratorTest {
     @Mock
     private MetricsCollector depsDevCollector;
 
+    @Mock
+    private RepoMetaAnalyzer repoMetaAnalyzer;
+
+    @Mock
+    private RepoMetaAnalyzerConfig repoMetaAnalyzerConfig;
+
     private PackageId packageId;
 
     @BeforeEach
@@ -87,11 +94,16 @@ class MetricsOrchestratorTest {
         // Stub collector identity — lenient because not all tests build with both collectors
         lenient().when(scorecardCollector.source()).thenReturn(MetricsSource.SCORECARD);
         lenient().when(depsDevCollector.source()).thenReturn(MetricsSource.DEPS_DEV);
+
+        // Default: analyzer disabled — preserves the historical (pre-feature) behaviour
+        // for the bulk of tests. Lenient because not every path reads it.
+        lenient().when(repoMetaAnalyzerConfig.enabled()).thenReturn(false);
     }
 
     private MetricsOrchestrator buildOrchestrator(List<MetricsCollector> collectors) {
         when(collectorInstances.iterator()).thenReturn(collectors.iterator());
-        return new MetricsOrchestrator(sourceConfig, collectorInstances, repoUrlResolver, jdbi);
+        return new MetricsOrchestrator(sourceConfig, collectorInstances, repoUrlResolver,
+                repoMetaAnalyzer, repoMetaAnalyzerConfig, jdbi);
     }
 
     @SuppressWarnings("unchecked")
@@ -388,5 +400,32 @@ class MetricsOrchestratorTest {
 
         assertThat(result.getPackageId()).isEqualTo(99L);
         verify(packageDao, never()).upsert(any());
+    }
+
+    @Test
+    void collectAndStore_repoMetaAnalyzerEnabled_invokesAnalyzeAndBackfill() throws Exception {
+        var orchestrator = buildOrchestrator(List.of(depsDevCollector));
+
+        when(sourceConfig.enabledSourcesByPriority())
+                .thenReturn(List.of("depsdev"));
+
+        stubPackageDaoUpsertReturnsId(42L);
+        stubUseTransactionToInvoke();
+
+        when(repoUrlResolver.resolve(eq(packageId), anyLong())).thenReturn(Optional.empty());
+
+        when(depsDevCollector.requiresRepoUrl()).thenReturn(false);
+        when(depsDevCollector.supports(any())).thenReturn(true);
+        PartialMetrics partial = new PartialMetrics();
+        partial.setLastReleaseVersion("4.18.0");
+        when(depsDevCollector.collect(any(), any())).thenReturn(partial);
+
+        // Enable analyzer for this test — overrides the lenient default.
+        when(repoMetaAnalyzerConfig.enabled()).thenReturn(true);
+
+        orchestrator.collectAndStore(packageId, null);
+
+        verify(repoMetaAnalyzer).analyze(eq(packageId), anyLong());
+        verify(repoMetaAnalyzer).findOrFetchByVersion(eq(packageId), anyLong(), eq("4.18.0"));
     }
 }

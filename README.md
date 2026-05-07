@@ -1,8 +1,8 @@
 # Operational Metrics
 
-A Quarkus microservice that aggregates **operational health metrics** for open-source packages from four data sources, exposed through a single REST API.
+A Quarkus microservice that aggregates **operational health metrics** for open-source packages from up to five data sources, exposed through a single REST API.
 
-It pulls Package URLs (PURLs) from a [Dependency Track](https://dependencytrack.org/) instance, fetches metrics from each enabled source according to a configurable priority, merges them by PURL identity (`type + namespace + name` — version is intentionally ignored), and stores the result in PostgreSQL with a configurable history retention window.
+It pulls Package URLs (PURLs) from a [Dependency Track](https://dependencytrack.org/) instance, fetches metrics from each enabled source according to a configurable priority, merges them by PURL identity (`type + namespace + name` — version is intentionally ignored for the merged metrics), and stores the result in PostgreSQL with a configurable history retention window. A separate `RepoMetaAnalyzer` component tracks **per-version release dates** so callers can compare any version against the latest.
 
 For internal architecture, data flow, and schema details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -10,11 +10,13 @@ For internal architecture, data flow, and schema details, see [ARCHITECTURE.md](
 
 ## What it gives you
 
-- **One API for four upstream sources** — OpenSSF Scorecard, deps.dev, ecosyste.ms, GitHub REST. No per-source clients in your code.
-- **Source priority + merge** — each source contributes the fields it is best at; higher-priority sources win when they overlap. Sources can be toggled individually.
+- **One API for five upstream sources** — Snyk (Enterprise), OpenSSF Scorecard, deps.dev, ecosyste.ms, GitHub REST. No per-source clients in your code.
+- **Source priority + merge** — each source contributes the fields it is best at; higher-priority sources win when they overlap. Sources can be toggled individually. Snyk default priority is 1 but **off by default** until a service-account token is configured.
 - **PURL-native** — query by full PURL, by coordinates (`type + namespace + name`), or by uploading a CycloneDX SBOM and getting metrics for every component back.
+- **Per-version release tracking** — `RepoMetaAnalyzer` populates a `package_version` table from upstream sources (ecosyste.ms / deps.dev for bulk discovery, Snyk for per-version enrichment). Querying with `?purl=pkg:.../@version` returns a `versionInfo` block with `daysSinceRelease` and `daysOlderThanLatest`.
+- **Repo URL resolution** — Snyk's `package_details.repository_url` plus deps.dev's `relatedProjects` and ecosyste.ms's `repository_url` feed the resolver chain that maps PURLs to GitHub URLs for Scorecard / GitHub collectors.
 - **On-demand fetch** — if a PURL is not yet in the cache, the API fetches it synchronously rather than returning 404.
-- **Scheduled sync** from Dependency Track with configurable concurrency, batch size, and rate-limit delay.
+- **Streaming sync** from Dependency Track with configurable concurrency. Heap stays bounded by `concurrency × per-task footprint` regardless of total PURL count.
 - **Historical snapshots** retained for a configurable window (default 90 days) with a daily purge job.
 
 ---
@@ -104,18 +106,35 @@ curl http://localhost:8080/api/v1/sync/status
   "repoUrl": "https://github.com/apache/logging-log4j2",
   "scorecard":  { "score": 7.6, "checks": "...", "date": "..." },
   "popularity": { "stars": 8421, "forks": 3210, "downloads": 894523112, "rankingPercentile": 0.04 },
-  "activity":   { "lastCommit": "...", "lastRelease": "...", "contributorCount": 312, "archived": false, "deprecated": false },
+  "activity":   {
+    "lastCommit": "...",
+    "lastRelease": "2024-12-04T00:00:00Z",
+    "lastReleaseVersion": "2.24.3",
+    "lastReleaseVersionSource": "ECOSYSTEMS",
+    "firstRelease": "2014-07-15T00:00:00Z",
+    "contributorCount": 312,
+    "archived": false,
+    "deprecated": false,
+    "snykRating": "Healthy"
+  },
   "community":  { "healthPct": 88.0, "avgIssueCloseTimeDays": 4.2, "avgPrCloseTimeDays": 1.8, "prAuthorsCount": 145, "mergedPrCount": 2104 },
   "security":   { "advisoryCount": 3, "slsaProvenance": true, "ossFuzz": true },
   "dependents": { "repos": 156342, "packages": 8214 },
   "maintainerCount": 12,
   "license": "Apache-2.0",
-  "sourcesUsed": ["SCORECARD", "DEPS_DEV", "ECOSYSTEMS", "GITHUB"],
+  "sourcesUsed": ["SNYK", "SCORECARD", "DEPS_DEV", "ECOSYSTEMS", "GITHUB"],
+  "versionInfo": {
+    "version": "2.17.0",
+    "releasedAt": "2021-12-18T00:00:00Z",
+    "resolvedVia": "SNYK",
+    "daysSinceRelease": 1600,
+    "daysOlderThanLatest": 1083
+  },
   "fetchedAt": "2026-04-30T02:15:00Z"
 }
 ```
 
-Fields populated by lower-priority sources only appear when higher-priority sources don't cover them. Null fields are omitted (`@JsonInclude(NON_NULL)`).
+Fields populated by lower-priority sources only appear when higher-priority sources don't cover them. Null fields are omitted (`@JsonInclude(NON_NULL)`). The `versionInfo` block appears only when the request PURL contained a version segment (e.g. `?purl=pkg:maven/.../log4j-core@2.17.0`).
 
 ---
 
@@ -126,17 +145,33 @@ All settings are externalised through Quarkus `@ConfigMapping` interfaces and ex
 ### Sources
 
 ```properties
+metrics.sources.source.snyk.enabled=false       # off by default; needs token + org_id
+metrics.sources.source.snyk.priority=1
 metrics.sources.source.scorecard.enabled=true
-metrics.sources.source.scorecard.priority=1
+metrics.sources.source.scorecard.priority=2
 metrics.sources.source.depsdev.enabled=true
-metrics.sources.source.depsdev.priority=2
+metrics.sources.source.depsdev.priority=3
 metrics.sources.source.ecosystems.enabled=true
-metrics.sources.source.ecosystems.priority=3
+metrics.sources.source.ecosystems.priority=4
 metrics.sources.source.github.enabled=true
-metrics.sources.source.github.priority=4
+metrics.sources.source.github.priority=5
 ```
 
 Priority is "lower number wins" when the same field is provided by multiple sources. Disabling a source stops the orchestrator from calling it entirely.
+
+### RepoMetaAnalyzer (per-version release tracking)
+
+```properties
+metrics.repo-meta-analyzer.enabled=true
+metrics.repo-meta-analyzer.bulk.refresh-after-days=7
+metrics.repo-meta-analyzer.bulk.source.ecosystems.priority=1
+metrics.repo-meta-analyzer.bulk.source.depsdev.priority=2
+metrics.repo-meta-analyzer.per-version.source.snyk.priority=1
+metrics.repo-meta-analyzer.per-version.source.ecosystems.priority=2
+metrics.repo-meta-analyzer.per-version.source.depsdev.priority=3
+```
+
+Two flows: **bulk** (all versions of a package, runs inline during sync, recency-skipped) and **per-version** (single `(package, version)` lookup, fires from API queries with a version segment, from SBOM upload, and as a sync-time backfill of the latest version). Snyk has no list endpoint so it's omitted from the bulk priority list.
 
 ### Required external credentials
 
@@ -146,6 +181,7 @@ Priority is "lower number wins" when the same field is provided by multiple sour
 | `DT_URL`, `DT_API_KEY` | Dependency Track | Used by the scheduled sync |
 | `GITHUB_TOKEN` | GitHub PAT | 5K req/hr without it you'll get 60. Permissions: `metadata:read`, `contents:read` |
 | `ECOSYSTEMS_CONTACT_EMAIL` | ecosyste.ms polite pool | Lifts rate limit from 5K/hr to 15K/hr |
+| `SNYK_ENABLED`, `SNYK_TOKEN`, `SNYK_ORG_ID` | Snyk source-account auth | Enterprise plan required. Service-account token, not personal. Source priority 1 by default. Disabled until enabled + token set. |
 
 ### Sync, history, API
 

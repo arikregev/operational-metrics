@@ -5,6 +5,7 @@ import com.example.operationalmetrics.dto.MetricsBulkResponse;
 import com.example.operationalmetrics.dto.MetricsResponse;
 import com.example.operationalmetrics.model.OperationalMetricsEntity;
 import com.example.operationalmetrics.model.PackageId;
+import com.example.operationalmetrics.model.PackageVersionEntry;
 import com.example.operationalmetrics.repository.OperationalMetricsDao;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.extension.ExtensionCallback;
@@ -38,6 +39,9 @@ class MetricsQueryServiceTest {
     private MetricsOrchestrator orchestrator;
 
     @Mock
+    private RepoMetaAnalyzer repoMetaAnalyzer;
+
+    @Mock
     private ApiConfig apiConfig;
 
     @Mock
@@ -47,7 +51,7 @@ class MetricsQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MetricsQueryService(jdbi, orchestrator, apiConfig);
+        service = new MetricsQueryService(jdbi, orchestrator, repoMetaAnalyzer, apiConfig);
 
         // Stub jdbi.withExtension(OperationalMetricsDao.class, callback) — lenient because static toResponse test does not use it
         lenient().when(jdbi.withExtension(eq(OperationalMetricsDao.class), any(ExtensionCallback.class)))
@@ -59,6 +63,7 @@ class MetricsQueryServiceTest {
 
     private OperationalMetricsEntity entityFor(String canonical, String type, String namespace, String name) {
         OperationalMetricsEntity e = new OperationalMetricsEntity();
+        e.setPackageId(42L);
         e.setPurlCanonical(canonical);
         e.setPurlType(type);
         e.setPurlNamespace(namespace);
@@ -254,5 +259,30 @@ class MetricsQueryServiceTest {
         assertThat(resp.license()).isEqualTo("MIT");
         assertThat(resp.sourcesUsed()).containsExactly("SCORECARD", "DEPS_DEV");
         assertThat(resp.fetchedAt()).isEqualTo(Instant.parse("2026-04-30T12:00:00Z"));
+    }
+
+    @Test
+    void findByPurl_withVersionSegment_populatesVersionInfo() {
+        var entity = entityFor("pkg:npm/express", "npm", null, "express");
+        entity.setLastReleaseAt(Instant.parse("2026-04-29T00:00:00Z"));
+        when(operationalMetricsDao.findByCanonical("pkg:npm/express"))
+                .thenReturn(Optional.of(entity));
+
+        Instant releasedAt = Instant.parse("2024-01-15T00:00:00Z");
+        PackageVersionEntry entry = new PackageVersionEntry(
+                42L, "4.18.0", releasedAt, "SNYK",
+                Instant.parse("2026-04-30T08:00:00Z"),
+                Instant.parse("2026-04-30T08:00:00Z"));
+        when(repoMetaAnalyzer.findOrFetchByVersion(any(PackageId.class), eq(42L), eq("4.18.0")))
+                .thenReturn(Optional.of(entry));
+
+        MetricsResponse response = service.findByPurl("pkg:npm/express@4.18.0");
+
+        assertThat(response.versionInfo()).isNotNull();
+        assertThat(response.versionInfo().version()).isEqualTo("4.18.0");
+        assertThat(response.versionInfo().releasedAt()).isEqualTo(releasedAt);
+        assertThat(response.versionInfo().resolvedVia()).isEqualTo("SNYK");
+        assertThat(response.versionInfo().daysSinceRelease()).isNotNull();
+        assertThat(response.versionInfo().daysOlderThanLatest()).isNotNull();
     }
 }

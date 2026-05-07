@@ -80,6 +80,17 @@ spec:
                   key: github-token
                   optional: true
                   {{- end }}
+            - name: SNYK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.snyk.existingSecret }}
+                  name: {{ .Values.snyk.existingSecret }}
+                  key: {{ .Values.snyk.existingSecretKey }}
+                  {{- else }}
+                  name: {{ include "operational-metrics.secretName" . }}
+                  key: snyk-token
+                  optional: true
+                  {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
