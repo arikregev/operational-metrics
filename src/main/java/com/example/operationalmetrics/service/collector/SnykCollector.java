@@ -110,25 +110,12 @@ public class SnykCollector implements MetricsCollector {
     }
 
     private void mapHealthToPartial(SnykPackageHealth health, PartialMetrics partial) {
-        SnykPackageHealth.Community community = health.community();
-        if (community != null) {
-            partial.setStarsCount(community.stargazersCount());
-        }
-
         SnykPackageHealth.Maintenance maintenance = health.maintenance();
         if (maintenance != null) {
-            partial.setForksCount(maintenance.forksCount());
             partial.setLastReleaseAt(maintenance.latestReleasePublishedAt());
             partial.setFirstReleaseAt(maintenance.firstReleasePublishedAt());
             partial.setIsArchived(maintenance.isArchived());
             partial.setSnykRating(maintenance.rating());
-        }
-
-        SnykPackageHealth.Popularity popularity = health.popularity();
-        if (popularity != null) {
-            partial.setDependentReposCount(popularity.dependentReposCount());
-            partial.setDependentPackagesCount(popularity.dependentPackagesCount());
-            partial.setDownloadCount(popularity.downloads());
         }
 
         SnykPackageHealth.Security security = health.security();

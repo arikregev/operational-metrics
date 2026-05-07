@@ -1,8 +1,6 @@
 package com.example.operationalmetrics.model;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Map;
 
 public class PartialMetrics {
 
@@ -15,12 +13,6 @@ public class PartialMetrics {
     private String scorecardSource;
 
     // Popularity
-    private Integer starsCount;
-    private Integer forksCount;
-    private Long dependentReposCount;
-    private Long dependentPackagesCount;
-    private Long downloadCount;
-    private String downloadPeriod;
     private Float rankingPercentile;
 
     // Activity
@@ -39,21 +31,9 @@ public class PartialMetrics {
     private Float communityHealthPct;
     private Float avgIssueCloseTimeDays;
     private Float avgPrCloseTimeDays;
-    private Integer prAuthorsCount;
-    private Integer mergedPrCount;
-    private Integer openIssuesCount;
-    private Integer openPrCount;
 
     // Security
     private Integer advisoryCount;
-    private Boolean hasSlsaProvenance;
-    private Boolean hasOssFuzz;
-
-    // Maintainer
-    private Integer maintainerCount;
-
-    // License
-    private String license;
 
     public void mergeFrom(PartialMetrics other) {
         if (other == null) return;
@@ -63,12 +43,6 @@ public class PartialMetrics {
         if (this.scorecardChecks == null) this.scorecardChecks = other.scorecardChecks;
         if (this.scorecardDate == null) this.scorecardDate = other.scorecardDate;
         if (this.scorecardSource == null) this.scorecardSource = other.scorecardSource;
-        if (this.starsCount == null) this.starsCount = other.starsCount;
-        if (this.forksCount == null) this.forksCount = other.forksCount;
-        if (this.dependentReposCount == null) this.dependentReposCount = other.dependentReposCount;
-        if (this.dependentPackagesCount == null) this.dependentPackagesCount = other.dependentPackagesCount;
-        if (this.downloadCount == null) this.downloadCount = other.downloadCount;
-        if (this.downloadPeriod == null) this.downloadPeriod = other.downloadPeriod;
         if (this.rankingPercentile == null) this.rankingPercentile = other.rankingPercentile;
         if (this.lastCommitAt == null) this.lastCommitAt = other.lastCommitAt;
         if (this.lastReleaseAt == null) this.lastReleaseAt = other.lastReleaseAt;
@@ -83,15 +57,7 @@ public class PartialMetrics {
         if (this.communityHealthPct == null) this.communityHealthPct = other.communityHealthPct;
         if (this.avgIssueCloseTimeDays == null) this.avgIssueCloseTimeDays = other.avgIssueCloseTimeDays;
         if (this.avgPrCloseTimeDays == null) this.avgPrCloseTimeDays = other.avgPrCloseTimeDays;
-        if (this.prAuthorsCount == null) this.prAuthorsCount = other.prAuthorsCount;
-        if (this.mergedPrCount == null) this.mergedPrCount = other.mergedPrCount;
-        if (this.openIssuesCount == null) this.openIssuesCount = other.openIssuesCount;
-        if (this.openPrCount == null) this.openPrCount = other.openPrCount;
         if (this.advisoryCount == null) this.advisoryCount = other.advisoryCount;
-        if (this.hasSlsaProvenance == null) this.hasSlsaProvenance = other.hasSlsaProvenance;
-        if (this.hasOssFuzz == null) this.hasOssFuzz = other.hasOssFuzz;
-        if (this.maintainerCount == null) this.maintainerCount = other.maintainerCount;
-        if (this.license == null) this.license = other.license;
     }
 
     // Getters and setters
@@ -110,24 +76,6 @@ public class PartialMetrics {
 
     public String getScorecardSource() { return scorecardSource; }
     public void setScorecardSource(String scorecardSource) { this.scorecardSource = scorecardSource; }
-
-    public Integer getStarsCount() { return starsCount; }
-    public void setStarsCount(Integer starsCount) { this.starsCount = starsCount; }
-
-    public Integer getForksCount() { return forksCount; }
-    public void setForksCount(Integer forksCount) { this.forksCount = forksCount; }
-
-    public Long getDependentReposCount() { return dependentReposCount; }
-    public void setDependentReposCount(Long dependentReposCount) { this.dependentReposCount = dependentReposCount; }
-
-    public Long getDependentPackagesCount() { return dependentPackagesCount; }
-    public void setDependentPackagesCount(Long dependentPackagesCount) { this.dependentPackagesCount = dependentPackagesCount; }
-
-    public Long getDownloadCount() { return downloadCount; }
-    public void setDownloadCount(Long downloadCount) { this.downloadCount = downloadCount; }
-
-    public String getDownloadPeriod() { return downloadPeriod; }
-    public void setDownloadPeriod(String downloadPeriod) { this.downloadPeriod = downloadPeriod; }
 
     public Float getRankingPercentile() { return rankingPercentile; }
     public void setRankingPercentile(Float rankingPercentile) { this.rankingPercentile = rankingPercentile; }
@@ -171,30 +119,6 @@ public class PartialMetrics {
     public Float getAvgPrCloseTimeDays() { return avgPrCloseTimeDays; }
     public void setAvgPrCloseTimeDays(Float avgPrCloseTimeDays) { this.avgPrCloseTimeDays = avgPrCloseTimeDays; }
 
-    public Integer getPrAuthorsCount() { return prAuthorsCount; }
-    public void setPrAuthorsCount(Integer prAuthorsCount) { this.prAuthorsCount = prAuthorsCount; }
-
-    public Integer getMergedPrCount() { return mergedPrCount; }
-    public void setMergedPrCount(Integer mergedPrCount) { this.mergedPrCount = mergedPrCount; }
-
-    public Integer getOpenIssuesCount() { return openIssuesCount; }
-    public void setOpenIssuesCount(Integer openIssuesCount) { this.openIssuesCount = openIssuesCount; }
-
-    public Integer getOpenPrCount() { return openPrCount; }
-    public void setOpenPrCount(Integer openPrCount) { this.openPrCount = openPrCount; }
-
     public Integer getAdvisoryCount() { return advisoryCount; }
     public void setAdvisoryCount(Integer advisoryCount) { this.advisoryCount = advisoryCount; }
-
-    public Boolean getHasSlsaProvenance() { return hasSlsaProvenance; }
-    public void setHasSlsaProvenance(Boolean hasSlsaProvenance) { this.hasSlsaProvenance = hasSlsaProvenance; }
-
-    public Boolean getHasOssFuzz() { return hasOssFuzz; }
-    public void setHasOssFuzz(Boolean hasOssFuzz) { this.hasOssFuzz = hasOssFuzz; }
-
-    public Integer getMaintainerCount() { return maintainerCount; }
-    public void setMaintainerCount(Integer maintainerCount) { this.maintainerCount = maintainerCount; }
-
-    public String getLicense() { return license; }
-    public void setLicense(String license) { this.license = license; }
 }

@@ -82,30 +82,10 @@ public class DepsDevCollector implements MetricsCollector {
             }
         }
 
-        try {
-            var dependents = depsDevClient.getDependents(
-                    mapPurlTypeToSystem(packageId.purlType()),
-                    formatName(packageId),
-                    purlResponse.versionKey() != null ? purlResponse.versionKey().version() : "");
-            if (dependents != null) {
-                partial.setDependentPackagesCount(dependents.dependentCount());
-            }
-        } catch (Exception e) {
-            LOG.debugv("deps.dev dependents lookup failed: {0}", e.getMessage());
-        }
-
         return partial;
     }
 
     private void mapProjectToPartial(DepsDevProject project, PartialMetrics partial) {
-        partial.setStarsCount(project.starsCount());
-        partial.setForksCount(project.forksCount());
-        partial.setLicense(project.license());
-
-        if (project.openIssuesCount() != null) {
-            partial.setOpenIssuesCount(project.openIssuesCount());
-        }
-
         if (project.scorecard() != null) {
             partial.setScorecardOverallScore(project.scorecard().overallScore());
             partial.setScorecardSource(MetricsSource.DEPS_DEV.name());
@@ -116,10 +96,6 @@ public class DepsDevCollector implements MetricsCollector {
                     LOG.warn("Failed to serialize deps.dev scorecard checks", e);
                 }
             }
-        }
-
-        if (project.ossFuzz() != null) {
-            partial.setHasOssFuzz(true);
         }
     }
 

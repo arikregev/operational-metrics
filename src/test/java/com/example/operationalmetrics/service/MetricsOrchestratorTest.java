@@ -151,7 +151,7 @@ class MetricsOrchestratorTest {
         when(depsDevCollector.requiresRepoUrl()).thenReturn(false);
         when(depsDevCollector.supports(any())).thenReturn(true);
         PartialMetrics depsDevPartial = new PartialMetrics();
-        depsDevPartial.setStarsCount(1000);
+        depsDevPartial.setContributorCount(1000);
         when(depsDevCollector.collect(any(), any())).thenReturn(depsDevPartial);
 
         OperationalMetricsEntity result = orchestrator.collectAndStore(packageId, null);
@@ -159,7 +159,7 @@ class MetricsOrchestratorTest {
         assertThat(result).isNotNull();
         assertThat(result.getPackageId()).isEqualTo(42L);
         assertThat(result.getScorecardOverallScore()).isEqualTo(7.5f);
-        assertThat(result.getStarsCount()).isEqualTo(1000);
+        assertThat(result.getContributorCount()).isEqualTo(1000);
         assertThat(result.getSourcesUsed()).containsExactly("SCORECARD", "DEPS_DEV");
         assertThat(result.getRepoUrl()).isEqualTo("https://github.com/apache/log4j2");
 
@@ -185,13 +185,13 @@ class MetricsOrchestratorTest {
         when(depsDevCollector.requiresRepoUrl()).thenReturn(false);
         when(depsDevCollector.supports(any())).thenReturn(true);
         PartialMetrics depsDevPartial = new PartialMetrics();
-        depsDevPartial.setStarsCount(500);
+        depsDevPartial.setContributorCount(500);
         when(depsDevCollector.collect(any(), any())).thenReturn(depsDevPartial);
 
         OperationalMetricsEntity result = orchestrator.collectAndStore(packageId, null);
 
         assertThat(result).isNotNull();
-        assertThat(result.getStarsCount()).isEqualTo(500);
+        assertThat(result.getContributorCount()).isEqualTo(500);
         assertThat(result.getSourcesUsed()).containsExactly("DEPS_DEV");
 
         // Scorecard collect should never be called
@@ -220,14 +220,14 @@ class MetricsOrchestratorTest {
         when(depsDevCollector.requiresRepoUrl()).thenReturn(false);
         when(depsDevCollector.supports(any())).thenReturn(true);
         PartialMetrics depsDevPartial = new PartialMetrics();
-        depsDevPartial.setStarsCount(900);
+        depsDevPartial.setContributorCount(900);
         when(depsDevCollector.collect(any(), any())).thenReturn(depsDevPartial);
 
         OperationalMetricsEntity result = orchestrator.collectAndStore(packageId, null);
 
         assertThat(result).isNotNull();
         // Continued past the failed scorecard call
-        assertThat(result.getStarsCount()).isEqualTo(900);
+        assertThat(result.getContributorCount()).isEqualTo(900);
         assertThat(result.getSourcesUsed()).containsExactly("DEPS_DEV");
 
         // Verify a FAILED log was inserted
@@ -254,7 +254,7 @@ class MetricsOrchestratorTest {
         when(depsDevCollector.requiresRepoUrl()).thenReturn(false);
         when(depsDevCollector.supports(any())).thenReturn(true);
         PartialMetrics partial = new PartialMetrics();
-        partial.setStarsCount(100);
+        partial.setContributorCount(100);
         when(depsDevCollector.collect(any(), any())).thenReturn(partial);
 
         UUID syncRunId = UUID.randomUUID();
@@ -308,13 +308,13 @@ class MetricsOrchestratorTest {
         when(depsDevCollector.requiresRepoUrl()).thenReturn(false);
         when(depsDevCollector.supports(any())).thenReturn(true);
         PartialMetrics partial = new PartialMetrics();
-        partial.setStarsCount(50);
+        partial.setContributorCount(50);
         when(depsDevCollector.collect(any(), any())).thenReturn(partial);
 
         OperationalMetricsEntity result = orchestrator.collectAndStore(packageId, null);
 
         assertThat(result).isNotNull();
-        assertThat(result.getStarsCount()).isEqualTo(50);
+        assertThat(result.getContributorCount()).isEqualTo(50);
         assertThat(result.getSourcesUsed()).containsExactly("DEPS_DEV");
     }
 
@@ -362,7 +362,7 @@ class MetricsOrchestratorTest {
         PartialMetrics partial = new PartialMetrics();
         RepoUrl discovered = RepoUrl.fromComponents("github.com", "owner", "repo");
         partial.setRepoUrl(discovered);
-        partial.setStarsCount(10);
+        partial.setContributorCount(10);
         when(depsDevCollector.collect(any(), any())).thenReturn(partial);
 
         OperationalMetricsEntity result = orchestrator.collectAndStore(packageId, null);

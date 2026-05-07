@@ -89,22 +89,22 @@ Each upstream source provides a different cross-section of the metrics surface. 
 |---|:---:|:---:|:---:|:---:|:---:|
 | `scorecard_overall_score` | — | **★** | ✓ | ✓ | — |
 | `scorecard_checks` | — | **★** | ✓ | ✓ | — |
-| `stars_count` / `forks_count` | ✓ | — | ✓ | ✓ | **★** |
-| `dependent_repos_count` | ✓ | — | ✓ | **★** | — |
-| `dependent_packages_count` | ✓ | — | ✓ | **★** | — |
-| `download_count` / `ranking_percentile` | ✓ | — | — | **★** | — |
+| `ranking_percentile` | — | — | — | **★** | — |
 | `commit_frequency_52w` | — | — | — | ✓ | **★** |
 | `contributor_count` | — | — | — | ✓ | **★** |
 | `community_health_pct` | — | — | — | — | **★** |
 | `avg_issue_close_time_days` / `avg_pr_close_time_days` | — | — | — | **★** | — |
 | `advisory_count` | ✓ | — | ✓ | ✓ | **★** |
-| `has_slsa_provenance` | — | — | **★** | — | — |
-| `has_oss_fuzz` | — | — | **★** | — | — |
 | `last_commit_at` / `is_archived` | ✓ | — | — | ✓ | **★** |
 | `last_release_at` / `last_release_version` / `first_release_at` | ✓ | — | — | **★** | — |
 | `snyk_rating` | **★** | — | — | — | — |
-| `maintainer_count` | — | — | — | **★** | — |
 | **repo URL resolution** | ✓ | — | **★** | ✓ | — |
+
+> Migration `008-trim-operational-metrics.sql` dropped 15 unused columns
+> (stars/forks/downloads, dependent counts, PR/issue counts, SLSA + OSS-Fuzz
+> flags, maintainer count, license, raw_source_data). The capability matrix
+> above only lists fields that survive in the schema; the upstream sources
+> still expose the dropped fields, but we no longer extract or persist them.
 
 ★ = primary / authoritative source for that field. ✓ = also provides it.
 
@@ -221,14 +221,15 @@ erDiagram
         bigint package_id FK
         real scorecard_overall_score
         jsonb scorecard_checks
-        integer stars_count
-        bigint download_count
         real ranking_percentile
         timestamptz last_commit_at
         timestamptz last_release_at
         varchar last_release_version
         varchar last_release_version_source
         timestamptz first_release_at
+        jsonb commit_frequency_52w
+        integer contributor_count
+        boolean is_archived
         varchar snyk_rating
         real community_health_pct
         integer advisory_count

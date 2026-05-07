@@ -182,8 +182,7 @@ public class MetricsQueryService {
                 e.getRepoUrl(),
                 new MetricsResponse.ScorecardInfo(
                         e.getScorecardOverallScore(), e.getScorecardChecks(), e.getScorecardDate()),
-                new MetricsResponse.PopularityInfo(
-                        e.getStarsCount(), e.getForksCount(), e.getDownloadCount(), e.getRankingPercentile()),
+                new MetricsResponse.PopularityInfo(e.getRankingPercentile()),
                 new MetricsResponse.ActivityInfo(
                         e.getLastCommitAt(), e.getLastReleaseAt(),
                         e.getLastReleaseVersion(), e.getLastReleaseVersionSource(),
@@ -192,14 +191,8 @@ public class MetricsQueryService {
                         e.getIsArchived(), e.getIsDeprecated(),
                         e.getSnykRating()),
                 new MetricsResponse.CommunityInfo(
-                        e.getCommunityHealthPct(), e.getAvgIssueCloseTimeDays(), e.getAvgPrCloseTimeDays(),
-                        e.getPrAuthorsCount(), e.getMergedPrCount()),
-                new MetricsResponse.SecurityInfo(
-                        e.getAdvisoryCount(), e.getHasSlsaProvenance(), e.getHasOssFuzz()),
-                new MetricsResponse.DependentsInfo(
-                        e.getDependentReposCount(), e.getDependentPackagesCount()),
-                e.getMaintainerCount(),
-                e.getLicense(),
+                        e.getCommunityHealthPct(), e.getAvgIssueCloseTimeDays(), e.getAvgPrCloseTimeDays()),
+                new MetricsResponse.SecurityInfo(e.getAdvisoryCount()),
                 e.getSourcesUsed(),
                 versionInfo,
                 e.getFetchedAt()

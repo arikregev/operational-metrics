@@ -73,13 +73,6 @@ public class EcosystemsCollector implements MetricsCollector {
             }
         }
 
-        partial.setDownloadCount(pkg.getDownloads());
-        partial.setDownloadPeriod(pkg.getDownloadsPeriod());
-        partial.setDependentReposCount(pkg.getDependentReposCount());
-        partial.setDependentPackagesCount(pkg.getDependentPackagesCount());
-        partial.setLicense(pkg.getLicenses());
-        partial.setMaintainerCount(null);
-
         if (pkg.getLatestReleasePublishedAt() != null) {
             partial.setLastReleaseAt(pkg.getLatestReleasePublishedAt());
         }
@@ -105,16 +98,10 @@ public class EcosystemsCollector implements MetricsCollector {
             if (im.getAvgTimeToClosePullRequest() != null) {
                 partial.setAvgPrCloseTimeDays(im.getAvgTimeToClosePullRequest() / 86400f);
             }
-            partial.setPrAuthorsCount(im.getPullRequestAuthorsCount());
-            partial.setMergedPrCount(im.getMergedPullRequestsCount());
-            partial.setOpenIssuesCount(im.getIssuesCount());
-            partial.setOpenPrCount(im.getPullRequestsCount());
         }
 
         if (pkg.getRepoMetadata() != null) {
             var rm = pkg.getRepoMetadata();
-            partial.setStarsCount(rm.getStargazersCount());
-            partial.setForksCount(rm.getForksCount());
             partial.setIsArchived(rm.getArchived());
             if (rm.getPushedAt() != null) {
                 partial.setLastCommitAt(rm.getPushedAt());

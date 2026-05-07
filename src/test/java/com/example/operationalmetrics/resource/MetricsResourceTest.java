@@ -48,11 +48,10 @@ class MetricsResourceTest {
                 null,
                 "express",
                 "https://github.com/expressjs/express",
-                null, null, null, null, null, null,
-                null, "MIT",
-                List.of("SCORECARD"),
-                null,                                      // versionInfo
-                Instant.parse("2026-04-30T12:00:00Z")
+                null, null, null, null, null,         // scorecard, popularity, activity, community, security
+                List.of("SCORECARD"),                  // sourcesUsed
+                null,                                   // versionInfo
+                Instant.parse("2026-04-30T12:00:00Z")  // fetchedAt
         );
     }
 
@@ -71,7 +70,7 @@ class MetricsResourceTest {
                 .body("purl", equalTo(purl))
                 .body("purlType", equalTo("npm"))
                 .body("purlName", equalTo("express"))
-                .body("license", equalTo("MIT"))
+                // license + maintainerCount removed in migration 008
                 .body("sourcesUsed", hasSize(1))
                 .body("sourcesUsed[0]", equalTo("SCORECARD"));
 

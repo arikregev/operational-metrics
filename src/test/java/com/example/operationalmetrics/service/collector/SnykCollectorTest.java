@@ -108,7 +108,6 @@ class SnykCollectorTest {
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
-        assertThat(partial.getStarsCount()).isNull();
         assertThat(partial.getRepoUrl()).isNull();
         assertThat(partial.getSnykRating()).isNull();
         verifyNoInteractions(snykClient);
@@ -121,7 +120,6 @@ class SnykCollectorTest {
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
-        assertThat(partial.getStarsCount()).isNull();
         assertThat(partial.getSnykRating()).isNull();
         verifyNoInteractions(snykClient);
     }
@@ -133,11 +131,6 @@ class SnykCollectorTest {
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
-        assertThat(partial.getStarsCount()).isEqualTo(75000);
-        assertThat(partial.getForksCount()).isEqualTo(66);
-        assertThat(partial.getDependentReposCount()).isEqualTo(65000L);
-        assertThat(partial.getDependentPackagesCount()).isEqualTo(280L);
-        assertThat(partial.getDownloadCount()).isEqualTo(12000L);
         assertThat(partial.getAdvisoryCount()).isEqualTo(3);
         assertThat(partial.getLastReleaseAt()).isEqualTo(Instant.parse("2024-10-08T00:00:00Z"));
         assertThat(partial.getFirstReleaseAt()).isEqualTo(Instant.parse("2010-01-03T00:00:00Z"));
@@ -158,7 +151,6 @@ class SnykCollectorTest {
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
-        assertThat(partial.getStarsCount()).isNull();
         assertThat(partial.getRepoUrl()).isNull();
         assertThat(partial.getSnykRating()).isNull();
         assertThat(partial.getLastReleaseVersion()).isNull();

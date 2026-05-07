@@ -58,7 +58,6 @@ class SbomMetricsResourceTest {
         entity.setPurlNamespace(id.namespace());
         entity.setPurlName(id.name());
         entity.setPurlCanonical(id.canonical());
-        entity.setLicense("Apache-2.0");
         entity.setSourcesUsed(List.of("SCORECARD"));
         entity.setFetchedAt(Instant.parse("2026-04-30T12:00:00Z"));
         return entity;
@@ -86,7 +85,6 @@ class SbomMetricsResourceTest {
                 .body("packagesFetchedOnDemand", equalTo(0))
                 .body("results", hasSize(1))
                 .body("results[0].purl", equalTo("pkg:npm/express"))
-                .body("results[0].license", equalTo("Apache-2.0"))
                 .body("errors", hasSize(0));
 
         // Cached path: orchestrator must NOT be called.

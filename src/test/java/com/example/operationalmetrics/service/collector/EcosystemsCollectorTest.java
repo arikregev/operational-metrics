@@ -41,9 +41,6 @@ class EcosystemsCollectorTest {
         pkg.setRepositoryUrl("https://github.com/expressjs/express");
         pkg.setDownloads(1_000_000L);
         pkg.setDownloadsPeriod("last-month");
-        pkg.setDependentReposCount(5_000L);
-        pkg.setDependentPackagesCount(20_000L);
-        pkg.setLicenses("MIT");
         Instant releaseAt = Instant.parse("2026-04-01T00:00:00Z");
         pkg.setLatestReleasePublishedAt(releaseAt);
 
@@ -62,7 +59,6 @@ class EcosystemsCollectorTest {
 
         EcosystemsPackage.EcosystemsRepoMetadata repoMd = new EcosystemsPackage.EcosystemsRepoMetadata();
         repoMd.setStargazersCount(60_000);
-        repoMd.setForksCount(10_000);
         repoMd.setArchived(false);
         Instant pushedAt = Instant.parse("2026-04-25T12:00:00Z");
         repoMd.setPushedAt(pushedAt);
@@ -77,23 +73,12 @@ class EcosystemsCollectorTest {
         assertThat(partial.getRepoUrl().owner()).isEqualTo("expressjs");
         assertThat(partial.getRepoUrl().name()).isEqualTo("express");
 
-        assertThat(partial.getDownloadCount()).isEqualTo(1_000_000L);
-        assertThat(partial.getDownloadPeriod()).isEqualTo("last-month");
-        assertThat(partial.getDependentReposCount()).isEqualTo(5_000L);
-        assertThat(partial.getDependentPackagesCount()).isEqualTo(20_000L);
-        assertThat(partial.getLicense()).isEqualTo("MIT");
         assertThat(partial.getLastReleaseAt()).isEqualTo(releaseAt);
         assertThat(partial.getRankingPercentile()).isEqualTo(95.5f);
 
         assertThat(partial.getAvgIssueCloseTimeDays()).isEqualTo(7.0f, within(0.001f));
         assertThat(partial.getAvgPrCloseTimeDays()).isEqualTo(3.0f, within(0.001f));
-        assertThat(partial.getPrAuthorsCount()).isEqualTo(45);
-        assertThat(partial.getMergedPrCount()).isEqualTo(120);
-        assertThat(partial.getOpenIssuesCount()).isEqualTo(15);
-        assertThat(partial.getOpenPrCount()).isEqualTo(8);
 
-        assertThat(partial.getStarsCount()).isEqualTo(60_000);
-        assertThat(partial.getForksCount()).isEqualTo(10_000);
         assertThat(partial.getIsArchived()).isFalse();
         assertThat(partial.getLastCommitAt()).isEqualTo(pushedAt);
     }
@@ -104,8 +89,6 @@ class EcosystemsCollectorTest {
 
         PartialMetrics partial = collector.collect(packageId, Optional.empty());
 
-        assertThat(partial.getDownloadCount()).isNull();
-        assertThat(partial.getStarsCount()).isNull();
         assertThat(partial.getRepoUrl()).isNull();
     }
 
@@ -115,10 +98,7 @@ class EcosystemsCollectorTest {
 
         PartialMetrics partial = collector.collect(packageId, Optional.empty());
 
-        assertThat(partial.getDownloadCount()).isNull();
-        assertThat(partial.getStarsCount()).isNull();
         assertThat(partial.getRepoUrl()).isNull();
-        assertThat(partial.getLicense()).isNull();
     }
 
     @Test
@@ -132,7 +112,6 @@ class EcosystemsCollectorTest {
 
         assertThat(partial.getRepoUrl()).isNull();
         // Other fields still populated even though URL parse failed
-        assertThat(partial.getDownloadCount()).isEqualTo(50L);
     }
 
     @Test

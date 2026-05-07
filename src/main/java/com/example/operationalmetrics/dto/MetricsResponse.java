@@ -16,15 +16,18 @@ public record MetricsResponse(
     ActivityInfo activity,
     CommunityInfo community,
     SecurityInfo security,
-    DependentsInfo dependents,
-    Integer maintainerCount,
-    String license,
     List<String> sourcesUsed,
     VersionInfo versionInfo,
     Instant fetchedAt
 ) {
     public record ScorecardInfo(Float score, String checks, Instant date) {}
-    public record PopularityInfo(Integer stars, Integer forks, Long downloads, Float rankingPercentile) {}
+
+    /**
+     * Trimmed: stars/forks/downloads/dependent counts removed in migration 008
+     * since they were not used by downstream consumers.
+     */
+    public record PopularityInfo(Float rankingPercentile) {}
+
     public record ActivityInfo(
         Instant lastCommit,
         Instant lastRelease,
@@ -36,9 +39,16 @@ public record MetricsResponse(
         Boolean deprecated,
         String snykRating
     ) {}
-    public record CommunityInfo(Float healthPct, Float avgIssueCloseTimeDays, Float avgPrCloseTimeDays, Integer prAuthorsCount, Integer mergedPrCount) {}
-    public record SecurityInfo(Integer advisoryCount, Boolean slsaProvenance, Boolean ossFuzz) {}
-    public record DependentsInfo(Long repos, Long packages) {}
+
+    /** Trimmed: prAuthorsCount + mergedPrCount removed in migration 008. */
+    public record CommunityInfo(
+        Float healthPct,
+        Float avgIssueCloseTimeDays,
+        Float avgPrCloseTimeDays
+    ) {}
+
+    /** Trimmed: slsaProvenance + ossFuzz removed in migration 008. */
+    public record SecurityInfo(Integer advisoryCount) {}
 
     /**
      * Per-version comparison info. Populated when the request PURL contains a

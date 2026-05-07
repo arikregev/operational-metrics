@@ -13,3 +13,5 @@ databaseChangeLog:
       file: db/changelog/006-unique-purl-canonical.sql
   - include:
       file: db/changelog/007-add-version-tracking.sql
+  - include:
+      file: db/changelog/008-trim-operational-metrics.sql

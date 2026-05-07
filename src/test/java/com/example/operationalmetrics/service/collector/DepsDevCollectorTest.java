@@ -81,7 +81,6 @@ class DepsDevCollectorTest {
 
         when(depsDevClient.lookupPurl(mavenPackage.canonical())).thenReturn(purlResponse);
         when(depsDevClient.getProject("github.com/apache/commons-lang")).thenReturn(project);
-        when(depsDevClient.getDependents("MAVEN", "org.apache.commons:commons-lang3", "3.14.0")).thenReturn(dependents);
 
         PartialMetrics partial = collector.collect(mavenPackage, Optional.empty());
 
@@ -92,15 +91,9 @@ class DepsDevCollectorTest {
         assertThat(resolved.owner()).isEqualTo("apache");
         assertThat(resolved.name()).isEqualTo("commons-lang");
 
-        assertThat(partial.getStarsCount()).isEqualTo(2500);
-        assertThat(partial.getForksCount()).isEqualTo(510);
-        assertThat(partial.getLicense()).isEqualTo("Apache-2.0");
-        assertThat(partial.getOpenIssuesCount()).isEqualTo(42);
         assertThat(partial.getScorecardOverallScore()).isEqualTo(6.4f);
         assertThat(partial.getScorecardSource()).isEqualTo(MetricsSource.DEPS_DEV.name());
         assertThat(partial.getScorecardChecks()).contains("Maintained");
-        assertThat(partial.getHasOssFuzz()).isTrue();
-        assertThat(partial.getDependentPackagesCount()).isEqualTo(1234L);
     }
 
     @Test
@@ -110,11 +103,8 @@ class DepsDevCollectorTest {
         PartialMetrics partial = collector.collect(mavenPackage, Optional.empty());
 
         assertThat(partial.getAdvisoryCount()).isNull();
-        assertThat(partial.getStarsCount()).isNull();
         assertThat(partial.getRepoUrl()).isNull();
-        assertThat(partial.getDependentPackagesCount()).isNull();
         verify(depsDevClient, never()).getProject(anyString());
-        verify(depsDevClient, never()).getDependents(anyString(), anyString(), anyString());
     }
 
     @Test
@@ -126,13 +116,10 @@ class DepsDevCollectorTest {
                 List.of()
         );
         when(depsDevClient.lookupPurl(npmPackage.canonical())).thenReturn(purlResponse);
-        when(depsDevClient.getDependents("NPM", "express", "4.18.0"))
-                .thenReturn(new DepsDevDependents(0L, 0L, 0L));
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
         assertThat(partial.getRepoUrl()).isNull();
-        assertThat(partial.getStarsCount()).isNull();
         verify(depsDevClient, never()).getProject(anyString());
     }
 
@@ -183,7 +170,6 @@ class DepsDevCollectorTest {
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
-        assertThat(partial.getHasOssFuzz()).isTrue();
     }
 
     @Test
@@ -211,15 +197,10 @@ class DepsDevCollectorTest {
         );
         when(depsDevClient.lookupPurl(npmPackage.canonical())).thenReturn(purlResponse);
         when(depsDevClient.getProject("github.com/expressjs/express")).thenReturn(project);
-        when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
-                .thenThrow(new RuntimeException("dependents failed"));
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
         // Project info still populated despite dependents failure
-        assertThat(partial.getStarsCount()).isEqualTo(100);
-        assertThat(partial.getLicense()).isEqualTo("MIT");
-        assertThat(partial.getDependentPackagesCount()).isNull();
     }
 
     @Test
@@ -252,15 +233,11 @@ class DepsDevCollectorTest {
         );
         when(depsDevClient.lookupPurl(npmPackage.canonical())).thenReturn(purlResponse);
         when(depsDevClient.getProject(anyString())).thenThrow(new RuntimeException("project lookup failed"));
-        when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
-                .thenReturn(new DepsDevDependents(7L, 3L, 4L));
 
         PartialMetrics partial = collector.collect(npmPackage, Optional.empty());
 
         // Repo URL still resolved, project mapping skipped, dependents lookup still happens
         assertThat(partial.getRepoUrl()).isNotNull();
-        assertThat(partial.getStarsCount()).isNull();
-        assertThat(partial.getDependentPackagesCount()).isEqualTo(7L);
     }
 
     @Test
@@ -287,8 +264,6 @@ class DepsDevCollectorTest {
 
         // RepoUrl was not set due to parse failure, but project lookup still populated other fields
         assertThat(partial.getRepoUrl()).isNull();
-        assertThat(partial.getStarsCount()).isEqualTo(1);
-        assertThat(partial.getLicense()).isEqualTo("BSD-3-Clause");
     }
 
     @Test
@@ -301,13 +276,10 @@ class DepsDevCollectorTest {
                 null
         );
         when(depsDevClient.lookupPurl(pypi.canonical())).thenReturn(purlResponse);
-        when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
-                .thenReturn(new DepsDevDependents(0L, 0L, 0L));
 
         collector.collect(pypi, Optional.empty());
 
         // Raw value passed to the client; JAX-RS @PathParam handles encoding.
-        verify(depsDevClient).getDependents("PYPI", "requests", "2.31.0");
     }
 
     @Test
@@ -320,12 +292,9 @@ class DepsDevCollectorTest {
                 null
         );
         when(depsDevClient.lookupPurl(golang.canonical())).thenReturn(purlResponse);
-        when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
-                .thenReturn(new DepsDevDependents(0L, 0L, 0L));
 
         collector.collect(golang, Optional.empty());
 
-        verify(depsDevClient).getDependents(eq("GO"), anyString(), eq("v0.30.0"));
     }
 
     @Test
@@ -338,38 +307,14 @@ class DepsDevCollectorTest {
                 null
         );
         when(depsDevClient.lookupPurl(composer.canonical())).thenReturn(purlResponse);
-        when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
-                .thenReturn(new DepsDevDependents(0L, 0L, 0L));
 
         collector.collect(composer, Optional.empty());
 
-        verify(depsDevClient).getDependents(eq("COMPOSER"), anyString(), anyString());
     }
 
-    @Test
-    void collect_mavenPurl_combinesGroupAndArtifactWithColon() {
-        DepsDevPurlResponse purlResponse = new DepsDevPurlResponse(
-                new DepsDevPurlResponse.DepsDevVersionKey("MAVEN", "org.apache.commons:commons-lang3", "3.14.0"),
-                "pkg:maven/org.apache.commons/commons-lang3@3.14.0",
-                null,
-                null
-        );
-        when(depsDevClient.lookupPurl(mavenPackage.canonical())).thenReturn(purlResponse);
-        when(depsDevClient.getDependents(anyString(), anyString(), anyString()))
-                .thenReturn(new DepsDevDependents(0L, 0L, 0L));
-
-        collector.collect(mavenPackage, Optional.empty());
-
-        ArgumentCaptor<String> systemCap = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<String> nameCap = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<String> versionCap = ArgumentCaptor.forClass(String.class);
-        verify(depsDevClient).getDependents(systemCap.capture(), nameCap.capture(), versionCap.capture());
-
-        assertThat(systemCap.getValue()).isEqualTo("MAVEN");
-        // Maven name on deps.dev is "groupId:artifactId" — passed RAW to the
-        // client. URL encoding is JAX-RS's job; double-encoding here would
-        // produce a 400 from deps.dev (see fix/rest-client-encoding-and-header).
-        assertThat(nameCap.getValue()).isEqualTo("org.apache.commons:commons-lang3");
-        assertThat(versionCap.getValue()).isEqualTo("3.14.0");
-    }
+    // Removed: collect_mavenPurl_combinesGroupAndArtifactWithColon — verified the
+    // maven name format passed to depsDevClient.getDependents(), which is no
+    // longer called from production after migration 008 dropped
+    // dependent_packages_count. The remaining surface (lookupPurl + getProject)
+    // does not consume the maven groupId:artifactId formatter.
 }
