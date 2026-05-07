@@ -17,3 +17,5 @@ databaseChangeLog:
       file: db/changelog/008-trim-operational-metrics.sql
   - include:
       file: db/changelog/009-package-versions-polled-at.sql
+  - include:
+      file: db/changelog/010-versions-feed-cursor.sql

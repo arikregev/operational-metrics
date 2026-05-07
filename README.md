@@ -86,7 +86,7 @@ Returns metrics for every component in the SBOM, fetching any unknown PURLs on d
 
 ### Trigger / inspect sync
 
-There are four manual sync triggers, each producing different work:
+There are five manual sync triggers, each producing different work:
 
 ```bash
 # Full — DT walk + collect for every PURL (the original cadence)
@@ -98,10 +98,13 @@ curl -X POST http://localhost:8080/api/v1/sync/refresh
 # Discovery-only — DT walk, upsert `package` rows; no collector calls
 curl -X POST http://localhost:8080/api/v1/sync/discovery
 
-# Versions sweep — discover new package_version rows for due-to-poll packages
+# Versions sweep — discover new package_version rows for due-to-poll packages (safety net)
 curl -X POST http://localhost:8080/api/v1/sync/versions
 
-# Combined status (both metrics-sync and versions-sweep state)
+# Versions changes-feed — poll registry "what's new" feeds and refresh matched packages (primary path)
+curl -X POST http://localhost:8080/api/v1/sync/versions-feed
+
+# Combined status (metrics-sync, versions-sweep, and versions-feed state)
 curl http://localhost:8080/api/v1/sync/status
 ```
 
@@ -112,7 +115,8 @@ Schedules and enabled-by-default state:
 | Full | `0 0 2 * * ?` (2 AM daily) | yes | Discovery + collection in one pass |
 | Refresh | `0 0 4 * * ?` | **no** | Re-collect metrics for stale packages on a different cadence than discovery |
 | Discovery | `0 0 1 * * ?` | **no** | Cheap DT walk to surface new PURLs ahead of the next collection run |
-| Versions sweep | `0 0 3 * * ?` | yes | Decoupled `package_version` discovery (default 30-day staleness) |
+| Versions sweep | `0 0 3 * * ?` | yes | Decoupled `package_version` discovery (default 30-day staleness) — safety net |
+| Versions changes-feed | `0 */15 * * * ?` (every 15 min) | yes (no-op until registries listed) | Sub-15-min discovery via ecosyste.ms recently-released feed — primary path |
 
 ### Health checks
 
@@ -195,10 +199,10 @@ metrics.repo-meta-analyzer.per-version.source.depsdev.priority=3
 
 Two flows:
 
-- **Bulk discovery** — fetches the full version list and inserts new rows. `package_version` rows are immutable (release dates don't change), so writes use `INSERT ... ON CONFLICT DO NOTHING`. Driven by the **versions sweep** scheduler (see below) at a cadence decoupled from operational_metrics.
+- **Bulk discovery** — fetches the full version list and inserts new rows. `package_version` rows are immutable (release dates don't change), so writes use `INSERT ... ON CONFLICT DO NOTHING`. Driven by **two complementary schedulers** (see below): the changes-feed (primary, fast) and the sweep (safety net).
 - **Per-version on-demand** — single `(package, version)` lookup. Fires from API queries with a `?purl=…@version` segment, from SBOM upload per component, and from the orchestrator as a 1-call backfill of each metrics-refresh's latest version (Snyk's authoritative `published_at`).
 
-### Versions sweep
+### Versions sweep (safety net)
 
 ```properties
 metrics.versions.enabled=true
@@ -209,7 +213,25 @@ metrics.versions.batch-size=300000
 metrics.versions.rate-budget-per-second=4 # token-bucket cap on outgoing requests
 ```
 
-The sweep walks `package` rows whose `latest_versions_polled_at` is older than `staleness-days` (or null) and runs `analyze()` for each, bounded by both `concurrency` (Semaphore-limited in-flight tasks) and `rate-budget-per-second` (token-bucket on outgoing API rate). At ~9M packages with rate-limit-bound upstreams, expect a coverage cycle of roughly `staleness-days` weeks under default settings — this is the safety net; the changes-feed primary path lands in a follow-up PR.
+The sweep walks `package` rows whose `latest_versions_polled_at` is older than `staleness-days` (or null) and runs `analyze()` for each, bounded by both `concurrency` (Semaphore-limited in-flight tasks) and `rate-budget-per-second` (token-bucket on outgoing API rate). At ~9M packages with rate-limit-bound upstreams, expect a coverage cycle of roughly `staleness-days` weeks — this is the safety net that catches anything the changes-feed missed.
+
+### Versions changes-feed (primary path)
+
+```properties
+metrics.versions-feed.enabled=true
+metrics.versions-feed.cron=0 */15 * * * ?            # every 15 min
+# Comma-separated list of ecosyste.ms registry hostnames the feed should follow.
+# Empty (default) = the poller runs but does no work. Pick the registries that
+# match the PURL types you actually have in DT.
+#metrics.versions-feed.registries=npmjs.org,pypi.org,repo1.maven.org
+metrics.versions-feed.per-page=100
+metrics.versions-feed.max-pages-per-poll=20          # safety cap on pagination depth
+metrics.versions-feed.initial-lookback-hours=2       # first-poll seed for a registry
+metrics.versions-feed.concurrency=8
+metrics.versions-feed.rate-budget-per-second=2       # lower than sweep so they coexist
+```
+
+Per registry, the feed paginates `GET /api/v1/registries/{registry}/packages?sort=latest_release_published_at&order=desc` until results dip below the per-registry watermark stored in `versions_feed_cursor`. Names from the response are bulk-intersected against the local `package` table (`purl_canonical = ANY(...)`), and any matched packages are queued for `analyze()`. Each registry's watermark advances after each poll (even on empty pages), so we never re-process the same window. Registries currently mapped: `npmjs.org`, `pypi.org`, `repo1.maven.org`, `rubygems.org`, `nuget.org`, `crates.io`, `packagist.org`, `hex.pm`, `proxy.golang.org`. The feed and sweep run independent token buckets so they don't starve each other.
 
 ### Required external credentials
 

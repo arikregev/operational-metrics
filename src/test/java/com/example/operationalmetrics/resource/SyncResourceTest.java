@@ -3,6 +3,7 @@ package com.example.operationalmetrics.resource;
 import com.example.operationalmetrics.service.MetricsOrchestrator;
 import com.example.operationalmetrics.service.MetricsQueryService;
 import com.example.operationalmetrics.service.PurlSyncService;
+import com.example.operationalmetrics.service.VersionsChangesFeedService;
 import com.example.operationalmetrics.service.VersionsSyncService;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
@@ -26,6 +27,9 @@ class SyncResourceTest {
     @InjectMock
     VersionsSyncService versionsService;
 
+    @InjectMock
+    VersionsChangesFeedService versionsFeedService;
+
     // Mocked so the Quarkus context can start without downstream wiring.
     @InjectMock
     MetricsOrchestrator orchestrator;
@@ -35,10 +39,13 @@ class SyncResourceTest {
 
     @BeforeEach
     void setUp() {
-        // GET /status now combines both sync states. Default the versions side
-        // to IDLE so each metrics-focused test doesn't have to repeat it.
+        // GET /status now combines all three subsystem states. Default the
+        // versions sweep + feed sides to IDLE so each metrics-focused test
+        // doesn't have to repeat it.
         when(versionsService.getStatus())
                 .thenReturn(VersionsSyncService.SweepStatus.idle());
+        when(versionsFeedService.getStatus())
+                .thenReturn(VersionsChangesFeedService.FeedStatus.idle());
     }
 
     @Test
@@ -63,7 +70,8 @@ class SyncResourceTest {
         .then()
                 .statusCode(200)
                 .body("metrics.state", equalTo("IDLE"))
-                .body("versions.state", equalTo("IDLE"));
+                .body("versions.state", equalTo("IDLE"))
+                .body("versionsFeed.state", equalTo("IDLE"));
 
         verify(syncService).getStatus();
     }
@@ -135,5 +143,39 @@ class SyncResourceTest {
                 .body("status", equalTo("VERSIONS_SWEEP_TRIGGERED"));
 
         verify(versionsService, times(1)).triggerAsync();
+    }
+
+    @Test
+    void triggerVersionsFeed_returns202AndInvokesService() {
+        given()
+        .when()
+                .post("/api/v1/sync/versions-feed")
+        .then()
+                .statusCode(202)
+                .body("status", equalTo("VERSIONS_FEED_TRIGGERED"));
+
+        verify(versionsFeedService, times(1)).triggerAsync();
+    }
+
+    @Test
+    void getStatus_includesFeedSubsection() {
+        // Even when only the feed has interesting state, /status should surface
+        // it alongside the others.
+        Instant start = Instant.parse("2026-05-07T10:00:00Z");
+        Instant end = Instant.parse("2026-05-07T10:00:30Z");
+        when(syncService.getStatus()).thenReturn(PurlSyncService.SyncStatus.idle());
+        when(versionsFeedService.getStatus())
+                .thenReturn(VersionsChangesFeedService.FeedStatus.completed(50, 7, 7, 0, start, end));
+
+        given()
+        .when()
+                .get("/api/v1/sync/status")
+        .then()
+                .statusCode(200)
+                .body("versionsFeed.state", equalTo("COMPLETED"))
+                .body("versionsFeed.scannedPackages", equalTo(50))
+                .body("versionsFeed.matchedPackages", equalTo(7))
+                .body("versionsFeed.analyzedPackages", equalTo(7))
+                .body("versionsFeed.failedPackages", equalTo(0));
     }
 }

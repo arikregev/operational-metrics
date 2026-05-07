@@ -26,6 +26,15 @@ public interface PackageDao {
     @SqlQuery("SELECT * FROM package WHERE purl_canonical = :canonical")
     Optional<PackageEntity> findByCanonical(@Bind("canonical") String canonical);
 
+    /**
+     * Bulk-find by canonical PURLs. Used by the changes-feed poller to
+     * intersect a registry's recently-released list against our local
+     * catalogue in a single round-trip. {@code purl_canonical} is indexed,
+     * so the query is fast even at ~9M-row scale.
+     */
+    @SqlQuery("SELECT * FROM package WHERE purl_canonical = ANY(:canonicals)")
+    List<PackageEntity> findByCanonicals(@Bind("canonicals") List<String> canonicals);
+
     @SqlQuery("SELECT * FROM package WHERE purl_type = :type AND purl_namespace = :namespace AND purl_name = :name")
     Optional<PackageEntity> findByCoordinates(@Bind("type") String type,
                                               @Bind("namespace") String namespace,
