@@ -4,8 +4,10 @@ import com.example.operationalmetrics.client.dependencytrack.DependencyTrackClie
 import com.example.operationalmetrics.client.dependencytrack.dto.DtComponent;
 import com.example.operationalmetrics.client.dependencytrack.dto.DtProject;
 import com.example.operationalmetrics.config.DependencyTrackConfig;
+import com.example.operationalmetrics.config.RefreshSyncConfig;
 import com.example.operationalmetrics.config.SyncConfig;
 import com.example.operationalmetrics.model.PackageId;
+import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,13 +43,22 @@ class PurlSyncServiceTest {
     private SyncConfig syncConfig;
 
     @Mock
+    private RefreshSyncConfig refreshConfig;
+
+    @Mock
     private MetricsOrchestrator orchestrator;
+
+    @Mock
+    private Jdbi jdbi;
 
     private PurlSyncService service;
 
     @BeforeEach
     void setUp() {
-        service = new PurlSyncService(dtClient, dtConfig, syncConfig, orchestrator);
+        // Default refresh config — lenient because the FULL sync paths don't read it.
+        lenient().when(refreshConfig.stalenessDays()).thenReturn(90);
+        lenient().when(refreshConfig.concurrency()).thenReturn(2);
+        service = new PurlSyncService(dtClient, dtConfig, syncConfig, refreshConfig, orchestrator, jdbi);
     }
 
     private void stubSyncConfigDefaults() {
@@ -312,9 +323,10 @@ class PurlSyncServiceTest {
 
     @Test
     void syncStatus_factories_running() {
-        PurlSyncService.SyncStatus status = PurlSyncService.SyncStatus.running();
+        PurlSyncService.SyncStatus status = PurlSyncService.SyncStatus.running("FULL");
 
         assertThat(status.state()).isEqualTo("RUNNING");
+        assertThat(status.mode()).isEqualTo("FULL");
         assertThat(status.isRunning()).isTrue();
         assertThat(status.startedAt()).isNotNull();
         assertThat(status.completedAt()).isNull();
@@ -327,9 +339,10 @@ class PurlSyncServiceTest {
         Instant end = Instant.parse("2026-04-30T10:30:00Z");
 
         PurlSyncService.SyncStatus status = PurlSyncService.SyncStatus.completed(
-                100, 95, 5, start, end);
+                "FULL", 100, 95, 5, start, end);
 
         assertThat(status.state()).isEqualTo("COMPLETED");
+        assertThat(status.mode()).isEqualTo("FULL");
         assertThat(status.isRunning()).isFalse();
         assertThat(status.totalPackages()).isEqualTo(100);
         assertThat(status.processedPackages()).isEqualTo(95);
@@ -344,9 +357,10 @@ class PurlSyncServiceTest {
         Instant start = Instant.parse("2026-04-30T10:00:00Z");
 
         PurlSyncService.SyncStatus status = PurlSyncService.SyncStatus.failed(
-                "Connection refused", start);
+                "FULL", "Connection refused", start);
 
         assertThat(status.state()).isEqualTo("FAILED");
+        assertThat(status.mode()).isEqualTo("FULL");
         assertThat(status.isRunning()).isFalse();
         assertThat(status.errorMessage()).isEqualTo("Connection refused");
         assertThat(status.startedAt()).isEqualTo(start);
@@ -356,9 +370,9 @@ class PurlSyncServiceTest {
     @Test
     void syncStatus_isRunning_onlyTrueWhenRunning() {
         assertThat(PurlSyncService.SyncStatus.idle().isRunning()).isFalse();
-        assertThat(PurlSyncService.SyncStatus.running().isRunning()).isTrue();
-        assertThat(PurlSyncService.SyncStatus.completed(0, 0, 0, Instant.now(), Instant.now())
+        assertThat(PurlSyncService.SyncStatus.running("FULL").isRunning()).isTrue();
+        assertThat(PurlSyncService.SyncStatus.completed("FULL", 0, 0, 0, Instant.now(), Instant.now())
                 .isRunning()).isFalse();
-        assertThat(PurlSyncService.SyncStatus.failed("err", Instant.now()).isRunning()).isFalse();
+        assertThat(PurlSyncService.SyncStatus.failed("FULL", "err", Instant.now()).isRunning()).isFalse();
     }
 }

@@ -195,12 +195,33 @@ repoMetaAnalyzer:
       ecosystems: { priority: 2 }
       depsdev:    { priority: 3 }
 
-# --- Sync schedule and behavior ---
+# --- Full sync (DT walk + collect every PURL) ---
 sync:
   cron: "0 0 2 * * ?"           # 2 AM daily
   # Max in-flight orchestrator tasks during a sync. Acts as the Semaphore permit
   # count in the streaming sync — when saturated, DT pagination throttles itself.
   concurrency: 4
+
+# --- Refresh-only sync (iterate `package` table, no DT walk) ---
+metricsRefresh:
+  enabled: false
+  cron: "0 0 4 * * ?"           # 4 AM daily (after full sync)
+  concurrency: 4
+  stalenessDays: 90             # skip packages whose operational_metrics.fetched_at is fresher
+
+# --- Discovery-only sync (DT walk, upsert `package` rows; no collectors) ---
+metricsDiscovery:
+  enabled: false
+  cron: "0 0 1 * * ?"           # 1 AM daily
+
+# --- Versions sweep (poll for new package_version rows) ---
+versionsSweep:
+  enabled: true
+  cron: "0 0 3 * * ?"           # 3 AM daily
+  concurrency: 32                # I/O-bound; fine on 2 CPU with virtual threads
+  stalenessDays: 30              # process packages whose latest_versions_polled_at is older
+  batchSize: 300000              # max packages per cron firing
+  rateBudgetPerSecond: 4         # token-bucket cap on outgoing version-list requests
 
 # --- History retention ---
 history:

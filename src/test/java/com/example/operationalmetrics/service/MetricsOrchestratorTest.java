@@ -403,7 +403,10 @@ class MetricsOrchestratorTest {
     }
 
     @Test
-    void collectAndStore_repoMetaAnalyzerEnabled_invokesAnalyzeAndBackfill() throws Exception {
+    void collectAndStore_repoMetaAnalyzerEnabled_invokesLatestVersionBackfillOnly() throws Exception {
+        // Bulk version discovery (analyze) was decoupled into VersionsSyncService;
+        // the orchestrator now only piggy-backs the latest-version Flow-B
+        // backfill (findOrFetchByVersion) when a release version is known.
         var orchestrator = buildOrchestrator(List.of(depsDevCollector));
 
         when(sourceConfig.enabledSourcesByPriority())
@@ -425,7 +428,7 @@ class MetricsOrchestratorTest {
 
         orchestrator.collectAndStore(packageId, null);
 
-        verify(repoMetaAnalyzer).analyze(eq(packageId), anyLong());
+        verify(repoMetaAnalyzer, never()).analyze(any(), anyLong());
         verify(repoMetaAnalyzer).findOrFetchByVersion(eq(packageId), anyLong(), eq("4.18.0"));
     }
 }

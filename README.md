@@ -84,12 +84,35 @@ curl -X POST http://localhost:8080/api/v1/sbom/upload \
 
 Returns metrics for every component in the SBOM, fetching any unknown PURLs on demand.
 
-### Trigger / inspect Dependency Track sync
+### Trigger / inspect sync
+
+There are four manual sync triggers, each producing different work:
 
 ```bash
+# Full — DT walk + collect for every PURL (the original cadence)
 curl -X POST http://localhost:8080/api/v1/sync/trigger
+
+# Refresh-only — iterate the existing `package` table, refresh stale metrics; no DT walk
+curl -X POST http://localhost:8080/api/v1/sync/refresh
+
+# Discovery-only — DT walk, upsert `package` rows; no collector calls
+curl -X POST http://localhost:8080/api/v1/sync/discovery
+
+# Versions sweep — discover new package_version rows for due-to-poll packages
+curl -X POST http://localhost:8080/api/v1/sync/versions
+
+# Combined status (both metrics-sync and versions-sweep state)
 curl http://localhost:8080/api/v1/sync/status
 ```
+
+Schedules and enabled-by-default state:
+
+| Mode | Default cron | Enabled? | Purpose |
+|---|---|---|---|
+| Full | `0 0 2 * * ?` (2 AM daily) | yes | Discovery + collection in one pass |
+| Refresh | `0 0 4 * * ?` | **no** | Re-collect metrics for stale packages on a different cadence than discovery |
+| Discovery | `0 0 1 * * ?` | **no** | Cheap DT walk to surface new PURLs ahead of the next collection run |
+| Versions sweep | `0 0 3 * * ?` | yes | Decoupled `package_version` discovery (default 30-day staleness) |
 
 ### Health checks
 
@@ -159,8 +182,10 @@ Priority is "lower number wins" when the same field is provided by multiple sour
 ### RepoMetaAnalyzer (per-version release tracking)
 
 ```properties
+# Source priority for analyze() — used by the versions sweep and on-demand
+# per-version lookups. Snyk lacks a list endpoint so it's omitted from the
+# bulk priority list (only participates in per-version).
 metrics.repo-meta-analyzer.enabled=true
-metrics.repo-meta-analyzer.bulk.refresh-after-days=7
 metrics.repo-meta-analyzer.bulk.source.ecosystems.priority=1
 metrics.repo-meta-analyzer.bulk.source.depsdev.priority=2
 metrics.repo-meta-analyzer.per-version.source.snyk.priority=1
@@ -168,7 +193,23 @@ metrics.repo-meta-analyzer.per-version.source.ecosystems.priority=2
 metrics.repo-meta-analyzer.per-version.source.depsdev.priority=3
 ```
 
-Two flows: **bulk** (all versions of a package, runs inline during sync, recency-skipped) and **per-version** (single `(package, version)` lookup, fires from API queries with a version segment, from SBOM upload, and as a sync-time backfill of the latest version). Snyk has no list endpoint so it's omitted from the bulk priority list.
+Two flows:
+
+- **Bulk discovery** — fetches the full version list and inserts new rows. `package_version` rows are immutable (release dates don't change), so writes use `INSERT ... ON CONFLICT DO NOTHING`. Driven by the **versions sweep** scheduler (see below) at a cadence decoupled from operational_metrics.
+- **Per-version on-demand** — single `(package, version)` lookup. Fires from API queries with a `?purl=…@version` segment, from SBOM upload per component, and from the orchestrator as a 1-call backfill of each metrics-refresh's latest version (Snyk's authoritative `published_at`).
+
+### Versions sweep
+
+```properties
+metrics.versions.enabled=true
+metrics.versions.cron=0 0 3 * * ?
+metrics.versions.concurrency=32           # I/O-bound; fine on 2 CPU with virtual threads
+metrics.versions.staleness-days=30
+metrics.versions.batch-size=300000
+metrics.versions.rate-budget-per-second=4 # token-bucket cap on outgoing requests
+```
+
+The sweep walks `package` rows whose `latest_versions_polled_at` is older than `staleness-days` (or null) and runs `analyze()` for each, bounded by both `concurrency` (Semaphore-limited in-flight tasks) and `rate-budget-per-second` (token-bucket on outgoing API rate). At ~9M packages with rate-limit-bound upstreams, expect a coverage cycle of roughly `staleness-days` weeks under default settings — this is the safety net; the changes-feed primary path lands in a follow-up PR.
 
 ### Required external credentials
 
@@ -183,10 +224,23 @@ Two flows: **bulk** (all versions of a package, runs inline during sync, recency
 ### Sync, history, API
 
 ```properties
-metrics.sync.cron=0 0 2 * * ?      # daily at 02:00
-metrics.sync.concurrency=4         # max in-flight orchestrator tasks
+# Full sync — DT walk + collect every PURL
+metrics.sync.cron=0 0 2 * * ?
+metrics.sync.concurrency=4
+
+# Refresh-only — iterate `package` table, no DT walk
+metrics.refresh.enabled=false
+metrics.refresh.cron=0 0 4 * * ?
+metrics.refresh.concurrency=4
+metrics.refresh.staleness-days=90
+
+# Discovery-only — DT walk, upsert `package` rows; no collectors
+metrics.discovery.enabled=false
+metrics.discovery.cron=0 0 1 * * ?
+
+# History retention + on-demand fetch
 metrics.history.retention-days=90
-metrics.history.purge-cron=0 0 3 * * ?   # daily at 03:00
+metrics.history.purge-cron=0 0 3 * * ?
 metrics.api.on-demand-concurrency=4
 ```
 

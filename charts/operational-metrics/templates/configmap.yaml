@@ -37,9 +37,27 @@ data:
   METRICS_SOURCES_SOURCE_GITHUB_ENABLED: {{ .Values.sources.github.enabled | quote }}
   METRICS_SOURCES_SOURCE_GITHUB_PRIORITY: {{ .Values.sources.github.priority | quote }}
 
-  # --- Sync ---
+  # --- Full sync ---
   METRICS_SYNC_CRON: {{ .Values.sync.cron | quote }}
   METRICS_SYNC_CONCURRENCY: {{ .Values.sync.concurrency | quote }}
+
+  # --- Refresh-only sync ---
+  METRICS_REFRESH_ENABLED: {{ .Values.metricsRefresh.enabled | quote }}
+  METRICS_REFRESH_CRON: {{ .Values.metricsRefresh.cron | quote }}
+  METRICS_REFRESH_CONCURRENCY: {{ .Values.metricsRefresh.concurrency | quote }}
+  METRICS_REFRESH_STALENESS_DAYS: {{ .Values.metricsRefresh.stalenessDays | quote }}
+
+  # --- Discovery-only sync ---
+  METRICS_DISCOVERY_ENABLED: {{ .Values.metricsDiscovery.enabled | quote }}
+  METRICS_DISCOVERY_CRON: {{ .Values.metricsDiscovery.cron | quote }}
+
+  # --- Versions sweep ---
+  METRICS_VERSIONS_ENABLED: {{ .Values.versionsSweep.enabled | quote }}
+  METRICS_VERSIONS_CRON: {{ .Values.versionsSweep.cron | quote }}
+  METRICS_VERSIONS_CONCURRENCY: {{ .Values.versionsSweep.concurrency | quote }}
+  METRICS_VERSIONS_STALENESS_DAYS: {{ .Values.versionsSweep.stalenessDays | quote }}
+  METRICS_VERSIONS_BATCH_SIZE: {{ .Values.versionsSweep.batchSize | quote }}
+  METRICS_VERSIONS_RATE_BUDGET_PER_SECOND: {{ .Values.versionsSweep.rateBudgetPerSecond | quote }}
 
   # --- History ---
   METRICS_HISTORY_RETENTION_DAYS: {{ .Values.history.retentionDays | quote }}

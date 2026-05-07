@@ -12,6 +12,7 @@ import com.example.operationalmetrics.config.RepoMetaAnalyzerConfig;
 import com.example.operationalmetrics.config.SnykConfig;
 import com.example.operationalmetrics.model.PackageId;
 import com.example.operationalmetrics.model.PackageVersionEntry;
+import com.example.operationalmetrics.repository.PackageDao;
 import com.example.operationalmetrics.repository.PackageVersionDao;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.extension.ExtensionCallback;
@@ -71,6 +72,9 @@ class RepoMetaAnalyzerTest {
     @Mock
     private PackageVersionDao dao;
 
+    @Mock
+    private PackageDao packageDao;
+
     private RepoMetaAnalyzer analyzer;
     private PackageId packageId;
     private final Long packageDbId = 42L;
@@ -92,6 +96,14 @@ class RepoMetaAnalyzerTest {
                     return callback.withExtension(dao);
                 });
 
+        // Stub jdbi.useExtension(PackageDao.class, ...) — analyze() uses this
+        // to mark a package as polled after a successful run.
+        lenient().doAnswer(inv -> {
+            ExtensionConsumer<PackageDao, Exception> consumer = inv.getArgument(1);
+            consumer.useExtension(packageDao);
+            return null;
+        }).when(jdbi).useExtension(eq(PackageDao.class), any(ExtensionConsumer.class));
+
         // Default config: enabled, with both flow priority lists. Tests override
         // the enabled/priority defaults as needed.
         bulk = mock(RepoMetaAnalyzerConfig.Bulk.class);
@@ -111,7 +123,7 @@ class RepoMetaAnalyzerTest {
         lenient().when(snykConfig.apiVersion()).thenReturn("2024-10-15");
     }
 
-    private void stubUseExtension() throws Exception {
+    private void stubUseExtensionVersionDao() throws Exception {
         doAnswer(inv -> {
             ExtensionConsumer<PackageVersionDao, Exception> consumer = inv.getArgument(1);
             consumer.useExtension(dao);
@@ -138,26 +150,13 @@ class RepoMetaAnalyzerTest {
 
         assertThat(result).isEmpty();
         verifyNoInteractions(ecosystemsClient, depsDevClient, snykClient);
-    }
-
-    @Test
-    void analyze_recencySkip_skipsUpstream() {
-        // dao.lastUpdatedAt returns now() - 1 day; refreshAfterDays = 7 → skip.
-        when(dao.lastUpdatedAt(packageDbId))
-                .thenReturn(Optional.of(Instant.now().minusSeconds(86_400)));
-        when(dao.latestN(eq(packageDbId), anyInt())).thenReturn(List.of());
-
-        List<PackageVersionEntry> result = analyzer.analyze(packageId, packageDbId);
-
-        assertThat(result).isEmpty();
-        verifyNoInteractions(ecosystemsClient, depsDevClient, snykClient);
-        verify(dao, never()).upsert(anyLong(), anyString(), any(), anyString());
+        // Disabled → no DB writes either.
+        verify(packageDao, never()).markVersionsPolled(anyLong());
     }
 
     @Test
     void analyze_ecosystemsPriority1_returnsList() throws Exception {
-        when(dao.lastUpdatedAt(packageDbId)).thenReturn(Optional.empty());
-        stubUseExtension();
+        stubUseExtensionVersionDao();
 
         Instant now = Instant.now();
         when(ecosystemsClient.versionsList(eq("npmjs.org"), eq("express")))
@@ -170,14 +169,14 @@ class RepoMetaAnalyzerTest {
 
         analyzer.analyze(packageId, packageDbId);
 
-        verify(dao, times(3)).upsert(eq(packageDbId), anyString(), any(), eq("ECOSYSTEMS"));
+        // Bulk discovery uses a single batch insert, not per-row upserts.
+        verify(dao, times(1)).insertBatch(any(), any(), any(), any());
         verifyNoInteractions(depsDevClient);
     }
 
     @Test
     void analyze_ecosystemsFails_fallsBackToDepsdev() throws Exception {
-        when(dao.lastUpdatedAt(packageDbId)).thenReturn(Optional.empty());
-        stubUseExtension();
+        stubUseExtensionVersionDao();
 
         when(ecosystemsClient.versionsList(anyString(), anyString()))
                 .thenThrow(new RuntimeException("ecosystems down"));
@@ -193,20 +192,43 @@ class RepoMetaAnalyzerTest {
 
         analyzer.analyze(packageId, packageDbId);
 
-        verify(dao, atLeastOnce()).upsert(eq(packageDbId), eq("4.18.0"), any(), eq("DEPS_DEV"));
+        verify(dao, atLeastOnce()).insertBatch(any(), any(), any(), any());
     }
 
     @Test
     void analyze_allSourcesEmpty_returnsEmpty() {
-        when(dao.lastUpdatedAt(packageDbId)).thenReturn(Optional.empty());
-
         when(ecosystemsClient.versionsList(anyString(), anyString())).thenReturn(List.of());
         when(depsDevClient.getPackage(anyString(), anyString())).thenReturn(null);
 
         List<PackageVersionEntry> result = analyzer.analyze(packageId, packageDbId);
 
         assertThat(result).isEmpty();
-        verify(dao, never()).upsert(anyLong(), anyString(), any(), anyString());
+        verify(dao, never()).insertBatch(any(), any(), any(), any());
+        // "Empty poll" still counts as a successful poll — stamp the timestamp.
+        verify(packageDao).markVersionsPolled(packageDbId);
+    }
+
+    @Test
+    void analyze_marksVersionsPolledOnSuccess() throws Exception {
+        stubUseExtensionVersionDao();
+
+        Instant now = Instant.now();
+        when(ecosystemsClient.versionsList(eq("npmjs.org"), eq("express")))
+                .thenReturn(List.of(ecoVersion("4.18.0", now)));
+        when(dao.latestN(eq(packageDbId), anyInt())).thenReturn(List.of());
+
+        analyzer.analyze(packageId, packageDbId);
+
+        verify(packageDao).markVersionsPolled(packageDbId);
+    }
+
+    @Test
+    void analyze_disabled_doesNotMarkPolled() {
+        when(config.enabled()).thenReturn(false);
+
+        analyzer.analyze(packageId, packageDbId);
+
+        verify(packageDao, never()).markVersionsPolled(anyLong());
     }
 
     // -----------------------------------------------------------------------
@@ -237,8 +259,8 @@ class RepoMetaAnalyzerTest {
                 .thenReturn(Optional.empty())  // initial cache check
                 .thenReturn(Optional.of(new PackageVersionEntry(
                         packageDbId, "4.18.0", Instant.parse("2024-01-15T00:00:00Z"),
-                        "SNYK", Instant.now(), Instant.now())));  // post-upsert read
-        stubUseExtension();
+                        "SNYK", Instant.now(), Instant.now())));  // post-insert read
+        stubUseExtensionVersionDao();
 
         SnykPackageVersionResponse.Attributes attrs = new SnykPackageVersionResponse.Attributes(
                 "npm", null, null, null, null, null, null, null, "express", "4.18.0",
@@ -254,7 +276,7 @@ class RepoMetaAnalyzerTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().resolvedVia()).isEqualTo("SNYK");
-        verify(dao).upsert(eq(packageDbId), eq("4.18.0"), any(), eq("SNYK"));
+        verify(dao).insertIfAbsent(eq(packageDbId), eq("4.18.0"), any(), eq("SNYK"));
         verifyNoInteractions(ecosystemsClient, depsDevClient);
     }
 
@@ -267,7 +289,7 @@ class RepoMetaAnalyzerTest {
                 .thenReturn(Optional.of(new PackageVersionEntry(
                         packageDbId, "4.18.0", Instant.parse("2024-01-15T00:00:00Z"),
                         "ECOSYSTEMS", Instant.now(), Instant.now())));
-        stubUseExtension();
+        stubUseExtensionVersionDao();
 
         when(ecosystemsClient.versionInfo(eq("npmjs.org"), eq("express"), eq("4.18.0")))
                 .thenReturn(ecoVersion("4.18.0", Instant.parse("2024-01-15T00:00:00Z")));
@@ -277,7 +299,7 @@ class RepoMetaAnalyzerTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().resolvedVia()).isEqualTo("ECOSYSTEMS");
-        verify(dao).upsert(eq(packageDbId), eq("4.18.0"), any(), eq("ECOSYSTEMS"));
+        verify(dao).insertIfAbsent(eq(packageDbId), eq("4.18.0"), any(), eq("ECOSYSTEMS"));
         verifyNoInteractions(snykClient);
     }
 
@@ -288,7 +310,7 @@ class RepoMetaAnalyzerTest {
                 .thenReturn(Optional.of(new PackageVersionEntry(
                         packageDbId, "4.18.0", Instant.parse("2024-01-15T00:00:00Z"),
                         "ECOSYSTEMS", Instant.now(), Instant.now())));
-        stubUseExtension();
+        stubUseExtensionVersionDao();
 
         when(snykClient.getPackageVersion(anyString(), anyString(), anyString(),
                 anyString(), anyString())).thenThrow(new RuntimeException("snyk down"));
@@ -301,7 +323,7 @@ class RepoMetaAnalyzerTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().resolvedVia()).isEqualTo("ECOSYSTEMS");
-        verify(dao).upsert(eq(packageDbId), eq("4.18.0"), any(), eq("ECOSYSTEMS"));
+        verify(dao).insertIfAbsent(eq(packageDbId), eq("4.18.0"), any(), eq("ECOSYSTEMS"));
     }
 
     @Test
@@ -326,7 +348,7 @@ class RepoMetaAnalyzerTest {
 
         assertThat(result).isPresent();
         assertThat(result.get()).isEqualTo(stale);
-        verify(dao, never()).upsert(anyLong(), anyString(), any(), anyString());
+        verify(dao, never()).insertIfAbsent(anyLong(), anyString(), any(), anyString());
     }
 
     // -----------------------------------------------------------------------

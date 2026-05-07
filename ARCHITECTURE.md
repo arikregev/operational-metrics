@@ -212,6 +212,7 @@ erDiagram
         varchar purl_namespace
         varchar purl_name
         varchar purl_canonical
+        timestamptz latest_versions_polled_at
         timestamptz created_at
         timestamptz updated_at
     }
@@ -395,19 +396,20 @@ CycloneDX format is auto-detected by the `BomParserFactory`. Components without 
 
 A separate component from the metrics collectors. Populates the `package_version` table with `(version, released_at, source)` rows so callers can answer "this dependency is N versions and M days behind latest" without re-fetching upstream data.
 
+> **`package_version` rows are immutable.** A version's `released_at` is fixed at publish time. Writes use `INSERT ... ON CONFLICT DO NOTHING` — no UPDATE work on re-poll. Discovery means inserting any rows we don't already have.
+
 ### Two flows
 
 ```mermaid
 flowchart TB
     subgraph FlowA [Flow A — bulk version discovery]
         ANALYZE[analyze packageId, packageDbId]
-        ANALYZE --> RECENCY{updated within<br/>refreshAfterDays?}
-        RECENCY -->|yes| SKIP[skip, return cache]
-        RECENCY -->|no| BULK_PRIORITY[iterate bulk source priority]
+        ANALYZE --> BULK_PRIORITY[iterate bulk source priority]
         BULK_PRIORITY -->|first| ECO_LIST[ecosyste.ms /versions]
         BULK_PRIORITY -->|second| DEPSDEV_PKG[deps.dev GetPackage]
-        ECO_LIST --> UPSERT[upsert package_version rows]
-        DEPSDEV_PKG --> UPSERT
+        ECO_LIST --> INSERT_BATCH[INSERT batch ON CONFLICT DO NOTHING]
+        DEPSDEV_PKG --> INSERT_BATCH
+        INSERT_BATCH --> MARK[UPDATE package SET latest_versions_polled_at = now]
     end
 
     subgraph FlowB [Flow B — per-version on-demand]
@@ -418,16 +420,18 @@ flowchart TB
         PERVER_PRIORITY -->|first| SNYK_VER[Snyk /versions/v]
         PERVER_PRIORITY -->|second| ECO_VER[ecosyste.ms /versions/v]
         PERVER_PRIORITY -->|third| DEPSDEV_VER[deps.dev GetVersion]
-        SNYK_VER --> UPSERT_ONE[upsert one row]
-        ECO_VER --> UPSERT_ONE
-        DEPSDEV_VER --> UPSERT_ONE
+        SNYK_VER --> INSERT_ONE[insertIfAbsent one row]
+        ECO_VER --> INSERT_ONE
+        DEPSDEV_VER --> INSERT_ONE
     end
 ```
 
+Staleness gating moved to the **DB query** (`PackageDao.findPackagesDuePoll`), not inside `analyze()`. The query selects packages whose `latest_versions_polled_at` is older than `metrics.versions.staleness-days`; `analyze()` always does the work when called.
+
 ### Triggers
 
-1. **Inline during sync.** After collectors finish for a package, `MetricsOrchestrator` calls `analyze(...)` (Flow A). Recency-skipped — repeated nightly syncs don't re-fetch unchanged version lists.
-2. **Inline backfill of latest version.** Right after Flow A, the orchestrator calls `findOrFetchByVersion(...)` for `merged.lastReleaseVersion` so Snyk's authoritative `published_at` lands in `package_version` for the most-relevant version.
+1. **Versions sweep scheduler** ([VersionsSyncService.runSweep](/Users/arikregev/Documents/operational-metrics/src/main/java/com/example/operationalmetrics/service/VersionsSyncService.java)). Cron-fired (default daily 3 AM). Walks `package` rows due to be polled, runs `analyze()` for each within Semaphore-bounded concurrency and a token-bucket rate cap on outgoing API rate. **Decoupled from operational_metrics refresh** so version discovery can run on a faster cadence. At ~9M packages with `rate-budget-per-second=4`, expect roughly `staleness-days` weeks per coverage cycle — this is the safety net; a registry changes-feed primary path lands in a follow-up PR.
+2. **Inline backfill of latest version.** After collectors finish for a package, `MetricsOrchestrator` calls `findOrFetchByVersion(...)` for `merged.lastReleaseVersion` so Snyk's authoritative `published_at` lands in `package_version` for the most-relevant version. 1 cheap call per metric refresh.
 3. **API caller asks about a specific version.** `MetricsResource.getByPurl` calls `MetricsQueryService.findByPurl` which extracts the version segment from the PURL and triggers Flow B. The result lands in `MetricsResponse.versionInfo` with `daysSinceRelease` and `daysOlderThanLatest` computed.
 
 ### Why no Snyk in Flow A

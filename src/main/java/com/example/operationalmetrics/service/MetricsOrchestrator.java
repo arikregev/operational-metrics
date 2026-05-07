@@ -118,22 +118,20 @@ public class MetricsOrchestrator {
             }
         });
 
-        // Per-version metadata population:
-        //   Flow A — bulk version discovery via list-capable sources (recency-skipped).
-        //   Flow B — backfill the latest version specifically, so Snyk's authoritative
-        //            published_at lands in package_version when Snyk is enabled.
-        // Both wrapped in try/catch — a failure here must not invalidate the merged
-        // metrics that were just persisted above.
-        if (repoMetaAnalyzerConfig.enabled()) {
+        // Per-version metadata: only the latest-version Flow-B backfill is
+        // piggy-backed here (1 cheap call to Snyk/ecosyste.ms/deps.dev for
+        // the most-relevant version specifically). Bulk version discovery
+        // (Flow A — RepoMetaAnalyzer.analyze) was decoupled into
+        // VersionsSyncService and runs on its own schedule (default daily,
+        // 30-day staleness). This keeps operational_metrics refresh and
+        // version-list discovery on independent cadences.
+        if (repoMetaAnalyzerConfig.enabled() && merged.getLastReleaseVersion() != null) {
             try {
-                repoMetaAnalyzer.analyze(packageId, packageDbId);
-                if (merged.getLastReleaseVersion() != null) {
-                    repoMetaAnalyzer.findOrFetchByVersion(packageId, packageDbId,
-                            merged.getLastReleaseVersion());
-                }
+                repoMetaAnalyzer.findOrFetchByVersion(packageId, packageDbId,
+                        merged.getLastReleaseVersion());
             } catch (Exception e) {
-                LOG.debugv("RepoMetaAnalyzer failed for {0}: {1}",
-                        packageId.canonical(), e.getMessage());
+                LOG.debugv("Latest-version backfill failed for {0}@{1}: {2}",
+                        packageId.canonical(), merged.getLastReleaseVersion(), e.getMessage());
             }
         }
 
