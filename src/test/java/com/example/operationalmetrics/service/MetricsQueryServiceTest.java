@@ -68,8 +68,8 @@ class MetricsQueryServiceTest {
         e.setPurlType(type);
         e.setPurlNamespace(namespace);
         e.setPurlName(name);
-        e.setStarsCount(123);
-        e.setForksCount(45);
+        e.setRankingPercentile(0.05f);
+        e.setContributorCount(45);
         e.setRepoUrl("https://github.com/" + namespace + "/" + name);
         e.setSourcesUsed(List.of("DEPS_DEV"));
         e.setFetchedAt(Instant.parse("2026-04-30T10:00:00Z"));
@@ -85,8 +85,8 @@ class MetricsQueryServiceTest {
         MetricsResponse response = service.findByPurl("pkg:npm/express@4.18.0");
 
         assertThat(response.purl()).isEqualTo("pkg:npm/express");
-        assertThat(response.popularity().stars()).isEqualTo(123);
-        assertThat(response.popularity().forks()).isEqualTo(45);
+        assertThat(response.popularity().rankingPercentile()).isEqualTo(0.05f);
+        assertThat(response.activity().contributorCount()).isEqualTo(45);
         verify(orchestrator, never()).collectAndStore(any(), any());
     }
 
@@ -195,27 +195,20 @@ class MetricsQueryServiceTest {
         e.setScorecardOverallScore(8.5f);
         e.setScorecardChecks("[]");
         e.setScorecardDate(Instant.parse("2026-01-01T00:00:00Z"));
-        e.setStarsCount(1000);
-        e.setForksCount(100);
-        e.setDownloadCount(5000L);
         e.setRankingPercentile(95.5f);
         e.setLastCommitAt(Instant.parse("2026-04-15T00:00:00Z"));
         e.setLastReleaseAt(Instant.parse("2026-04-10T00:00:00Z"));
+        e.setLastReleaseVersion("2.0.0");
+        e.setLastReleaseVersionSource("ECOSYSTEMS");
+        e.setFirstReleaseAt(Instant.parse("2018-06-01T00:00:00Z"));
         e.setContributorCount(25);
         e.setIsArchived(false);
         e.setIsDeprecated(false);
+        e.setSnykRating("Healthy");
         e.setCommunityHealthPct(85.0f);
         e.setAvgIssueCloseTimeDays(3.5f);
         e.setAvgPrCloseTimeDays(1.2f);
-        e.setPrAuthorsCount(20);
-        e.setMergedPrCount(150);
         e.setAdvisoryCount(2);
-        e.setHasSlsaProvenance(true);
-        e.setHasOssFuzz(false);
-        e.setDependentReposCount(500L);
-        e.setDependentPackagesCount(80L);
-        e.setMaintainerCount(5);
-        e.setLicense("MIT");
         e.setSourcesUsed(List.of("SCORECARD", "DEPS_DEV"));
         e.setFetchedAt(Instant.parse("2026-04-30T12:00:00Z"));
 
@@ -231,32 +224,24 @@ class MetricsQueryServiceTest {
         assertThat(resp.scorecard().checks()).isEqualTo("[]");
         assertThat(resp.scorecard().date()).isEqualTo(Instant.parse("2026-01-01T00:00:00Z"));
 
-        assertThat(resp.popularity().stars()).isEqualTo(1000);
-        assertThat(resp.popularity().forks()).isEqualTo(100);
-        assertThat(resp.popularity().downloads()).isEqualTo(5000L);
         assertThat(resp.popularity().rankingPercentile()).isEqualTo(95.5f);
 
         assertThat(resp.activity().lastCommit()).isEqualTo(Instant.parse("2026-04-15T00:00:00Z"));
         assertThat(resp.activity().lastRelease()).isEqualTo(Instant.parse("2026-04-10T00:00:00Z"));
+        assertThat(resp.activity().lastReleaseVersion()).isEqualTo("2.0.0");
+        assertThat(resp.activity().lastReleaseVersionSource()).isEqualTo("ECOSYSTEMS");
+        assertThat(resp.activity().firstRelease()).isEqualTo(Instant.parse("2018-06-01T00:00:00Z"));
         assertThat(resp.activity().contributorCount()).isEqualTo(25);
         assertThat(resp.activity().archived()).isFalse();
         assertThat(resp.activity().deprecated()).isFalse();
+        assertThat(resp.activity().snykRating()).isEqualTo("Healthy");
 
         assertThat(resp.community().healthPct()).isEqualTo(85.0f);
         assertThat(resp.community().avgIssueCloseTimeDays()).isEqualTo(3.5f);
         assertThat(resp.community().avgPrCloseTimeDays()).isEqualTo(1.2f);
-        assertThat(resp.community().prAuthorsCount()).isEqualTo(20);
-        assertThat(resp.community().mergedPrCount()).isEqualTo(150);
 
         assertThat(resp.security().advisoryCount()).isEqualTo(2);
-        assertThat(resp.security().slsaProvenance()).isTrue();
-        assertThat(resp.security().ossFuzz()).isFalse();
 
-        assertThat(resp.dependents().repos()).isEqualTo(500L);
-        assertThat(resp.dependents().packages()).isEqualTo(80L);
-
-        assertThat(resp.maintainerCount()).isEqualTo(5);
-        assertThat(resp.license()).isEqualTo("MIT");
         assertThat(resp.sourcesUsed()).containsExactly("SCORECARD", "DEPS_DEV");
         assertThat(resp.fetchedAt()).isEqualTo(Instant.parse("2026-04-30T12:00:00Z"));
     }

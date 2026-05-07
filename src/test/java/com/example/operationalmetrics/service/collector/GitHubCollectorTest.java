@@ -71,12 +71,8 @@ class GitHubCollectorTest {
 
         PartialMetrics partial = collector.collect(packageId, Optional.of(gitHubRepo));
 
-        assertThat(partial.getStarsCount()).isEqualTo(500);
-        assertThat(partial.getForksCount()).isEqualTo(75);
-        assertThat(partial.getOpenIssuesCount()).isEqualTo(12);
         assertThat(partial.getIsArchived()).isFalse();
         assertThat(partial.getLastCommitAt()).isEqualTo(pushedAt);
-        assertThat(partial.getLicense()).isEqualTo("MIT");
         assertThat(partial.getCommunityHealthPct()).isEqualTo(85.0f);
         assertThat(partial.getCommitFrequency52w()).isEqualTo("[5,3]");
     }
@@ -85,8 +81,6 @@ class GitHubCollectorTest {
     void collect_noRepoUrl_returnsEmpty() {
         PartialMetrics partial = collector.collect(packageId, Optional.empty());
 
-        assertThat(partial.getStarsCount()).isNull();
-        assertThat(partial.getForksCount()).isNull();
         verify(gitHubClient, never()).getRepo(anyString(), anyString());
         verify(gitHubClient, never()).getCommunityProfile(anyString(), anyString());
         verify(gitHubClient, never()).getCommitActivity(anyString(), anyString());
@@ -98,7 +92,6 @@ class GitHubCollectorTest {
 
         PartialMetrics partial = collector.collect(packageId, Optional.of(gitlab));
 
-        assertThat(partial.getStarsCount()).isNull();
         verify(gitHubClient, never()).getRepo(anyString(), anyString());
     }
 
@@ -112,7 +105,6 @@ class GitHubCollectorTest {
 
         PartialMetrics partial = collector.collect(packageId, Optional.of(gitHubRepo));
 
-        assertThat(partial.getStarsCount()).isNull();
         assertThat(partial.getCommunityHealthPct()).isEqualTo(70.0f);
         assertThat(partial.getCommitFrequency52w()).isEqualTo("[1]");
     }
@@ -133,8 +125,6 @@ class GitHubCollectorTest {
 
         PartialMetrics partial = collector.collect(packageId, Optional.of(gitHubRepo));
 
-        assertThat(partial.getStarsCount()).isEqualTo(10);
-        assertThat(partial.getLicense()).isEqualTo("MIT");
         assertThat(partial.getCommunityHealthPct()).isNull();
         assertThat(partial.getCommitFrequency52w()).isEqualTo("[7]");
     }
@@ -155,7 +145,6 @@ class GitHubCollectorTest {
 
         PartialMetrics partial = collector.collect(packageId, Optional.of(gitHubRepo));
 
-        assertThat(partial.getStarsCount()).isEqualTo(10);
         assertThat(partial.getCommunityHealthPct()).isEqualTo(60.0f);
         assertThat(partial.getCommitFrequency52w()).isNull();
     }
@@ -181,7 +170,6 @@ class GitHubCollectorTest {
         PartialMetrics partial = collector.collect(packageId, Optional.of(gitHubRepo));
 
         assertThat(partial.getCommitFrequency52w()).isEqualTo("[1,2,3,4]");
-        assertThat(partial.getLicense()).isNull();
     }
 
     @Test

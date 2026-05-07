@@ -105,7 +105,7 @@ curl http://localhost:8080/api/v1/sync/status
   "purlName": "log4j-core",
   "repoUrl": "https://github.com/apache/logging-log4j2",
   "scorecard":  { "score": 7.6, "checks": "...", "date": "..." },
-  "popularity": { "stars": 8421, "forks": 3210, "downloads": 894523112, "rankingPercentile": 0.04 },
+  "popularity": { "rankingPercentile": 0.04 },
   "activity":   {
     "lastCommit": "...",
     "lastRelease": "2024-12-04T00:00:00Z",
@@ -117,11 +117,8 @@ curl http://localhost:8080/api/v1/sync/status
     "deprecated": false,
     "snykRating": "Healthy"
   },
-  "community":  { "healthPct": 88.0, "avgIssueCloseTimeDays": 4.2, "avgPrCloseTimeDays": 1.8, "prAuthorsCount": 145, "mergedPrCount": 2104 },
-  "security":   { "advisoryCount": 3, "slsaProvenance": true, "ossFuzz": true },
-  "dependents": { "repos": 156342, "packages": 8214 },
-  "maintainerCount": 12,
-  "license": "Apache-2.0",
+  "community":  { "healthPct": 88.0, "avgIssueCloseTimeDays": 4.2, "avgPrCloseTimeDays": 1.8 },
+  "security":   { "advisoryCount": 3 },
   "sourcesUsed": ["SNYK", "SCORECARD", "DEPS_DEV", "ECOSYSTEMS", "GITHUB"],
   "versionInfo": {
     "version": "2.17.0",

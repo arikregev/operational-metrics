@@ -162,12 +162,6 @@ public class MetricsOrchestrator {
         entity.setScorecardDate(merged.getScorecardDate());
         entity.setScorecardSource(merged.getScorecardSource());
 
-        entity.setStarsCount(merged.getStarsCount());
-        entity.setForksCount(merged.getForksCount());
-        entity.setDependentReposCount(merged.getDependentReposCount());
-        entity.setDependentPackagesCount(merged.getDependentPackagesCount());
-        entity.setDownloadCount(merged.getDownloadCount());
-        entity.setDownloadPeriod(merged.getDownloadPeriod());
         entity.setRankingPercentile(merged.getRankingPercentile());
 
         entity.setLastCommitAt(merged.getLastCommitAt());
@@ -184,17 +178,8 @@ public class MetricsOrchestrator {
         entity.setCommunityHealthPct(merged.getCommunityHealthPct());
         entity.setAvgIssueCloseTimeDays(merged.getAvgIssueCloseTimeDays());
         entity.setAvgPrCloseTimeDays(merged.getAvgPrCloseTimeDays());
-        entity.setPrAuthorsCount(merged.getPrAuthorsCount());
-        entity.setMergedPrCount(merged.getMergedPrCount());
-        entity.setOpenIssuesCount(merged.getOpenIssuesCount());
-        entity.setOpenPrCount(merged.getOpenPrCount());
 
         entity.setAdvisoryCount(merged.getAdvisoryCount());
-        entity.setHasSlsaProvenance(merged.getHasSlsaProvenance());
-        entity.setHasOssFuzz(merged.getHasOssFuzz());
-
-        entity.setMaintainerCount(merged.getMaintainerCount());
-        entity.setLicense(merged.getLicense());
 
         entity.setSourcesUsed(sourcesUsed);
         entity.setFetchedAt(Instant.now());

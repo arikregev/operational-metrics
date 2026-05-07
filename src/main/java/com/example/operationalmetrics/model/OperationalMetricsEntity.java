@@ -27,12 +27,6 @@ public class OperationalMetricsEntity {
     private String scorecardSource;
 
     // Popularity
-    private Integer starsCount;
-    private Integer forksCount;
-    private Long dependentReposCount;
-    private Long dependentPackagesCount;
-    private Long downloadCount;
-    private String downloadPeriod;
     private Float rankingPercentile;
 
     // Activity
@@ -51,24 +45,11 @@ public class OperationalMetricsEntity {
     private Float communityHealthPct;
     private Float avgIssueCloseTimeDays;
     private Float avgPrCloseTimeDays;
-    private Integer prAuthorsCount;
-    private Integer mergedPrCount;
-    private Integer openIssuesCount;
-    private Integer openPrCount;
 
     // Security
     private Integer advisoryCount;
-    private Boolean hasSlsaProvenance;
-    private Boolean hasOssFuzz;
-
-    // Maintainer
-    private Integer maintainerCount;
-
-    // License
-    private String license;
 
     // Meta
-    private String rawSourceData;
     private List<String> sourcesUsed;
     private Instant fetchedAt;
     private Instant createdAt;
@@ -118,24 +99,6 @@ public class OperationalMetricsEntity {
     public String getScorecardSource() { return scorecardSource; }
     public void setScorecardSource(String v) { this.scorecardSource = v; }
 
-    public Integer getStarsCount() { return starsCount; }
-    public void setStarsCount(Integer v) { this.starsCount = v; }
-
-    public Integer getForksCount() { return forksCount; }
-    public void setForksCount(Integer v) { this.forksCount = v; }
-
-    public Long getDependentReposCount() { return dependentReposCount; }
-    public void setDependentReposCount(Long v) { this.dependentReposCount = v; }
-
-    public Long getDependentPackagesCount() { return dependentPackagesCount; }
-    public void setDependentPackagesCount(Long v) { this.dependentPackagesCount = v; }
-
-    public Long getDownloadCount() { return downloadCount; }
-    public void setDownloadCount(Long v) { this.downloadCount = v; }
-
-    public String getDownloadPeriod() { return downloadPeriod; }
-    public void setDownloadPeriod(String v) { this.downloadPeriod = v; }
-
     public Float getRankingPercentile() { return rankingPercentile; }
     public void setRankingPercentile(Float v) { this.rankingPercentile = v; }
 
@@ -178,35 +141,8 @@ public class OperationalMetricsEntity {
     public Float getAvgPrCloseTimeDays() { return avgPrCloseTimeDays; }
     public void setAvgPrCloseTimeDays(Float v) { this.avgPrCloseTimeDays = v; }
 
-    public Integer getPrAuthorsCount() { return prAuthorsCount; }
-    public void setPrAuthorsCount(Integer v) { this.prAuthorsCount = v; }
-
-    public Integer getMergedPrCount() { return mergedPrCount; }
-    public void setMergedPrCount(Integer v) { this.mergedPrCount = v; }
-
-    public Integer getOpenIssuesCount() { return openIssuesCount; }
-    public void setOpenIssuesCount(Integer v) { this.openIssuesCount = v; }
-
-    public Integer getOpenPrCount() { return openPrCount; }
-    public void setOpenPrCount(Integer v) { this.openPrCount = v; }
-
     public Integer getAdvisoryCount() { return advisoryCount; }
     public void setAdvisoryCount(Integer v) { this.advisoryCount = v; }
-
-    public Boolean getHasSlsaProvenance() { return hasSlsaProvenance; }
-    public void setHasSlsaProvenance(Boolean v) { this.hasSlsaProvenance = v; }
-
-    public Boolean getHasOssFuzz() { return hasOssFuzz; }
-    public void setHasOssFuzz(Boolean v) { this.hasOssFuzz = v; }
-
-    public Integer getMaintainerCount() { return maintainerCount; }
-    public void setMaintainerCount(Integer v) { this.maintainerCount = v; }
-
-    public String getLicense() { return license; }
-    public void setLicense(String v) { this.license = v; }
-
-    public String getRawSourceData() { return rawSourceData; }
-    public void setRawSourceData(String v) { this.rawSourceData = v; }
 
     public List<String> getSourcesUsed() { return sourcesUsed; }
     public void setSourcesUsed(List<String> v) { this.sourcesUsed = v; }

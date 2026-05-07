@@ -62,17 +62,10 @@ public class GitHubCollector implements MetricsCollector {
 
         try {
             GitHubRepo ghRepo = gitHubClient.getRepo(repo.owner(), repo.name());
-            partial.setStarsCount(ghRepo.stargazersCount());
-            partial.setForksCount(ghRepo.forksCount());
-            partial.setOpenIssuesCount(ghRepo.openIssuesCount());
             partial.setIsArchived(ghRepo.archived());
 
             if (ghRepo.pushedAt() != null) {
                 partial.setLastCommitAt(ghRepo.pushedAt());
-            }
-
-            if (ghRepo.license() != null && ghRepo.license().spdxId() != null) {
-                partial.setLicense(ghRepo.license().spdxId());
             }
         } catch (Exception e) {
             LOG.warnv("GitHub repo lookup failed for {0}/{1}: {2}", repo.owner(), repo.name(), e.getMessage());
