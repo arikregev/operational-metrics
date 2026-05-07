@@ -12,6 +12,7 @@ import com.example.operationalmetrics.config.SnykConfig;
 import com.example.operationalmetrics.model.MetricsSource;
 import com.example.operationalmetrics.model.PackageId;
 import com.example.operationalmetrics.model.PackageVersionEntry;
+import com.example.operationalmetrics.repository.PackageDao;
 import com.example.operationalmetrics.repository.PackageVersionDao;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -19,7 +20,6 @@ import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jboss.logging.Logger;
 import org.jdbi.v3.core.Jdbi;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -73,20 +73,27 @@ public class RepoMetaAnalyzer {
     // -----------------------------------------------------------------------
 
     /**
-     * Fetches all known versions for the given package and upserts them into
-     * {@code package_version}. Skips the upstream call when any existing row
-     * for the package has been updated within {@code refreshAfterDays}.
+     * Polls list-capable sources (ecosyste.ms, deps.dev) for the package's
+     * full version list and inserts any rows we don't already have.
+     * Existing rows are left untouched — version metadata is immutable.
      *
-     * @return the rows after the upsert; empty list if no source returned
-     *         versions or if recency-skip applied.
+     * <p>On any successful poll (even if zero new versions were inserted),
+     * stamps {@code package.latest_versions_polled_at = now()} so the next
+     * sweep skips this package until {@code stalenessDays} elapses. On
+     * caught upstream-failure, leaves the timestamp unchanged so the next
+     * sweep retries.
+     *
+     * <p>Staleness gating moved out of this method — the caller (sweep
+     * scheduler or direct invocation) decides whether to call. Recency-skip
+     * config was retired in favour of {@link com.example.operationalmetrics.config.VersionsSyncConfig#stalenessDays}.
+     *
+     * @return the rows in {@code package_version} after the insert (full list
+     *         for that package, sorted by released_at desc). Empty list if
+     *         every source failed or returned nothing.
      */
     public List<PackageVersionEntry> analyze(PackageId packageId, Long packageDbId) {
         if (!config.enabled()) {
             return List.of();
-        }
-        if (recencySkip(packageDbId)) {
-            LOG.debugv("Skipping bulk analyze for {0} — recent rows exist", packageId.canonical());
-            return latestN(packageId, packageDbId, Integer.MAX_VALUE);
         }
 
         for (String sourceKey : config.bulk().enabledSourcesByPriority()) {
@@ -105,18 +112,35 @@ public class RepoMetaAnalyzer {
 
             if (!versions.isEmpty()) {
                 String resolvedVia = sourceKeyToMetricsSource(sourceKey).name();
-                jdbi.useExtension(PackageVersionDao.class, dao -> {
-                    for (UpstreamVersion v : versions) {
-                        dao.upsert(packageDbId, v.version(), v.releasedAt(), resolvedVia);
-                    }
-                });
-                LOG.infov("Bulk analyze for {0}: {1} versions from {2}",
+                batchInsert(packageDbId, versions, resolvedVia);
+                jdbi.useExtension(PackageDao.class, dao -> dao.markVersionsPolled(packageDbId));
+                LOG.infov("Polled {0}: {1} versions from {2}",
                         packageId.canonical(), versions.size(), resolvedVia);
                 return latestN(packageId, packageDbId, Integer.MAX_VALUE);
             }
         }
 
+        // Every source returned an empty list. Treat as a successful poll
+        // with zero discoveries — still stamp the timestamp.
+        jdbi.useExtension(PackageDao.class, dao -> dao.markVersionsPolled(packageDbId));
         return List.of();
+    }
+
+    /** Splits the list into bound-arrays for {@link PackageVersionDao#insertBatch}. */
+    private void batchInsert(Long packageDbId, List<UpstreamVersion> versions, String resolvedVia) {
+        int n = versions.size();
+        List<Long> packageIds = new ArrayList<>(n);
+        List<String> versionStrings = new ArrayList<>(n);
+        List<Instant> releasedAts = new ArrayList<>(n);
+        List<String> resolvedVias = new ArrayList<>(n);
+        for (UpstreamVersion v : versions) {
+            packageIds.add(packageDbId);
+            versionStrings.add(v.version());
+            releasedAts.add(v.releasedAt());
+            resolvedVias.add(resolvedVia);
+        }
+        jdbi.useExtension(PackageVersionDao.class,
+                dao -> dao.insertBatch(packageIds, versionStrings, releasedAts, resolvedVias));
     }
 
     // -----------------------------------------------------------------------
@@ -163,7 +187,7 @@ public class RepoMetaAnalyzer {
             if (fetched != null) {
                 String resolvedVia = sourceKeyToMetricsSource(sourceKey).name();
                 jdbi.useExtension(PackageVersionDao.class,
-                        dao -> dao.upsert(packageDbId, version, fetched.releasedAt(), resolvedVia));
+                        dao -> dao.insertIfAbsent(packageDbId, version, fetched.releasedAt(), resolvedVia));
                 return jdbi.withExtension(PackageVersionDao.class,
                         dao -> dao.findByPackageAndVersion(packageDbId, version));
             }
@@ -188,16 +212,6 @@ public class RepoMetaAnalyzer {
     // -----------------------------------------------------------------------
     // Internals
     // -----------------------------------------------------------------------
-
-    private boolean recencySkip(Long packageDbId) {
-        Optional<Instant> lastUpdated = jdbi.withExtension(PackageVersionDao.class,
-                dao -> dao.lastUpdatedAt(packageDbId));
-        if (lastUpdated.isEmpty() || lastUpdated.get() == null) {
-            return false;
-        }
-        Duration age = Duration.between(lastUpdated.get(), Instant.now());
-        return age.toDays() < config.bulk().refreshAfterDays();
-    }
 
     private MetricsSource sourceKeyToMetricsSource(String key) {
         return switch (key) {

@@ -34,4 +34,47 @@ public interface PackageDao {
     @SqlQuery("SELECT * FROM package WHERE purl_type = :type AND purl_namespace = :namespace")
     List<PackageEntity> findByTypeAndNamespace(@Bind("type") String type,
                                                @Bind("namespace") String namespace);
+
+    /**
+     * Returns packages whose latest {@code operational_metrics.fetched_at} is
+     * older than {@code stalenessDays} days, or that have no metrics row at
+     * all. When {@code stalenessDays <= 0}, returns every package — staleness
+     * filter disabled. Oldest-first ordering so progress is monotonic across
+     * runs that hit batch limits.
+     */
+    @SqlQuery("""
+            SELECT p.* FROM package p
+            LEFT JOIN operational_metrics m ON m.package_id = p.id
+            WHERE :stalenessDays <= 0
+               OR m.fetched_at IS NULL
+               OR m.fetched_at < now() - make_interval(days => :stalenessDays)
+            ORDER BY m.fetched_at ASC NULLS FIRST
+            """)
+    List<PackageEntity> findStalePackages(@Bind("stalenessDays") int stalenessDays);
+
+    /**
+     * Returns packages whose version list is due to be polled — those whose
+     * {@code latest_versions_polled_at} is older than {@code stalenessDays}
+     * or has never been set. Bounded by {@code batchSize} so a single sweep
+     * firing doesn't OOM at 9M-package scale. Oldest-first ordering so
+     * forward progress is guaranteed across consecutive runs.
+     */
+    @SqlQuery("""
+            SELECT * FROM package
+            WHERE latest_versions_polled_at IS NULL
+               OR latest_versions_polled_at < now() - make_interval(days => :stalenessDays)
+            ORDER BY latest_versions_polled_at ASC NULLS FIRST
+            LIMIT :batchSize
+            """)
+    List<PackageEntity> findPackagesDuePoll(@Bind("stalenessDays") int stalenessDays,
+                                             @Bind("batchSize") int batchSize);
+
+    /**
+     * Stamps {@code latest_versions_polled_at = now()} after a successful
+     * version-list poll, regardless of whether new versions were inserted.
+     * The semantic is "we asked the registry on this date" — failures must
+     * NOT call this so the next sweep retries the package.
+     */
+    @SqlUpdate("UPDATE package SET latest_versions_polled_at = now() WHERE id = :id")
+    void markVersionsPolled(@Bind("id") Long id);
 }
